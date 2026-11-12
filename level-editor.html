@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Quantum Maze Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a working sidebar on the left; the live board on the right is the playground itself, framed, with a tool strip
+   above it and the editing handles drawn over it. One dark look, to match the playground. */
+:root {
+  --void: #04050a;
+  --panel: #0b0d14;
+  --raise: rgba(255, 255, 255, 0.05);
+  --line: rgba(196, 206, 236, 0.13);
+  --track: rgba(196, 206, 236, 0.18);
+  --ink: #e7eaf3;
+  --muted: #8d95aa;
+  --accent: #a9c2ff;
+  --gold: #f2cc73;
+  --good: #66e6bf;
+  --bad: #ff8f7e;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--void); color: var(--ink); font: 13px/1.45 var(--font-body); overflow: hidden; }
+.app { height: 100%; display: grid; grid-template-columns: 340px minmax(0, 1fr); }
+
+.side {
+  overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 14px;
+  padding-block: calc(14px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: 14px;
+}
+.side::-webkit-scrollbar { width: 6px; }
+.side::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+.head { display: flex; align-items: baseline; gap: 10px; }
+.head h1 { margin: 0; flex: 1; font: 400 24px/1 var(--font-display); }
+.head h1 i { color: var(--accent); }
+a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--track); text-underline-offset: 2px; }
+a:hover { text-decoration-color: var(--accent); }
+
+.group { display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--line); padding-top: 12px; }
+.group h2, .sub { margin: 0; font: 500 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.sub { margin-top: 4px; }
+.note { margin: 0; font-size: 12px; color: var(--muted); text-wrap: pretty; }
+.note b { color: var(--ink); font-weight: 500; }
+.note.share { color: var(--ink); }
+.note.share a { user-select: all; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field > span { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; }
+.field > span output { font: 11px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.field.wide { grid-column: 1 / -1; }
+.tag { font: 500 9px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
+
+input[type=text], input[type=number], textarea {
+  width: 100%; font: inherit; color: var(--ink); background: var(--raise); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px;
+}
+input[type=number] { font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+textarea { resize: vertical; min-height: 54px; line-height: 1.4; }
+input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.btn {
+  font: inherit; font-size: 12px; color: var(--ink); background: var(--raise); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.1); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--void); font-weight: 500; }
+.btn.gold { border-color: rgba(242, 204, 115, 0.5); color: var(--gold); }
+.btn kbd { font: 10px var(--font-mono); color: var(--muted); }
+.btn.primary kbd { color: rgba(4, 5, 10, 0.6); }
+.check { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--gold); margin: 0; }
+
+.levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.levels button {
+  width: 100%; display: grid; grid-template-columns: 22px 1fr auto 16px; gap: 6px; align-items: center; text-align: left;
+  font: inherit; color: var(--ink); background: none; border: 1px solid transparent; border-radius: 6px; padding: 5px 7px; cursor: pointer;
+}
+.levels button:hover { background: var(--raise); }
+.levels button[aria-current=true] { background: rgba(169, 194, 255, 0.12); border-color: rgba(169, 194, 255, 0.35); }
+.levels .n, .levels .pct { font: 11px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.levels .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.levels .st { font-size: 12px; text-align: center; }
+.ok { color: var(--good); }
+.no { color: var(--bad); }
+.warn { color: var(--gold); }
+
+.results { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 10px; align-items: baseline; font-size: 12px; }
+.results b { font: 500 15px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.results span:first-child { color: var(--muted); }
+
+main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.bar {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-block: calc(8px + env(safe-area-inset-top, 0px)) 8px; padding-left: 12px; padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 5px 9px; cursor: pointer; box-shadow: 0 0 0 0.5px var(--line); }
+.seg button[aria-pressed=true] { color: var(--void); background: var(--accent); font-weight: 500; }
+.seg.view button[aria-pressed=true][data-v=solution] { background: var(--gold); }
+.seg button kbd { font: 10px var(--font-mono); opacity: 0.6; margin-left: 4px; }
+.spacer { flex: 1; }
+
+.stage { position: relative; flex: 1; min-height: 0; background: var(--void); overflow: hidden; }
+.stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+.stage svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.stage.play svg { pointer-events: none; }
+.stage.busy svg { pointer-events: none; }
+.stagenote {
+  position: absolute; left: 12px; bottom: 12px; max-width: min(520px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 8px;
+  background: rgba(11, 13, 20, 0.86); border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; font-size: 12px; color: var(--muted);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.stagenote b { color: var(--ink); font-weight: 500; }
+.stagenote.gold { border-color: rgba(242, 204, 115, 0.45); }
+
+#ov line, #ov rect, #ov circle, #ov path { vector-effect: non-scaling-stroke; }
+#ov .edge { fill: none; stroke: rgba(196, 206, 236, 0.16); stroke-dasharray: 2 5; }
+#ov .ghost { stroke: rgba(231, 234, 243, 0.14); stroke-linecap: round; fill: none; }
+#ov .hover { stroke: rgba(169, 194, 255, 0.22); stroke-linecap: round; fill: none; }
+#ov .sel { stroke: rgba(169, 194, 255, 0.34); stroke-linecap: round; fill: none; }
+#ov .guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 4; fill: none; }
+#ov .handle { fill: var(--void); stroke: var(--accent); stroke-width: 1.5; }
+#ov .handle.gold { stroke: var(--gold); }
+#ov .preview { stroke: rgba(196, 206, 236, 0.7); stroke-linecap: round; fill: none; }
+#ov text { fill: var(--accent); font: 11px var(--font-mono); }
+
+.modal { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.6); }
+.modal > div {
+  width: min(720px, 100%); max-height: 90%; display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.modal textarea { flex: 1; min-height: 320px; font: 11px/1.45 var(--font-mono); white-space: pre; }
+
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); }
+  main { order: -1; height: 72vh; }
+  .side { border-right: 0; overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="head"><h1><i>ψ</i> Maze editor</h1><a id="playLink" href="schrodinger-playground.html">Playground</a></div>
+
+    <section class="group" aria-labelledby="h-file">
+      <h2 id="h-file">Level file</h2>
+      <div class="row">
+        <button class="btn" id="openBtn" type="button">Open…</button>
+        <button class="btn primary" id="saveBtn" type="button">Save <kbd>⌘S</kbd></button>
+        <button class="btn" id="textBtn" type="button">Show file</button>
+      </div>
+      <p class="note" id="fileNote"></p>
+      <p class="note share">Made a cool level? Send it to <a href="mailto:burgarth@gmail.com">burgarth@gmail.com</a> and it might get included in the next release!</p>
+      <input type="file" id="fileInput" accept=".js,.json" hidden>
+    </section>
+
+    <section class="group" aria-labelledby="h-levels">
+      <h2 id="h-levels">Levels</h2>
+      <ol class="levels" id="levelList"></ol>
+      <div class="row">
+        <button class="btn" id="newBtn" type="button">New</button>
+        <button class="btn" id="dupBtn" type="button">Duplicate</button>
+        <button class="btn" id="upBtn" type="button" aria-label="Move level up">↑</button>
+        <button class="btn" id="downBtn" type="button" aria-label="Move level down">↓</button>
+        <button class="btn" id="delLevelBtn" type="button">Delete</button>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="h-level">
+      <h2 id="h-level">Level</h2>
+      <div class="grid2">
+        <label class="field wide"><span>Name</span><input type="text" id="f-name"></label>
+        <label class="field"><span>Target <output>% caught</output></span><input type="number" id="f-target" min="1" max="100" step="1"></label>
+      </div>
+      <label class="field"><span>Hint for the player</span><textarea id="f-hint" rows="2"></textarea></label>
+      <label class="field"><span>Shown when solved</span><textarea id="f-success" rows="2"></textarea></label>
+      <label class="field"><span>Designer notes <output>not shown to players</output></span><textarea id="f-notes" rows="2"></textarea></label>
+    </section>
+
+    <section class="group" aria-labelledby="h-src">
+      <h2 id="h-src">Source and detector</h2>
+      <div class="grid2">
+        <label class="field"><span>Momentum k <output id="o-lambda"></output></span><input type="number" id="f-k" min="0.3" max="1.6" step="0.05"></label>
+        <label class="field"><span>Packet width <output>Δx</output></span><input type="number" id="f-width" min="4" max="60" step="1"></label>
+        <label class="field"><span>Source u</span><input type="number" id="f-su" min="0" max="1.6" step="0.005"></label>
+        <label class="field"><span>Source v</span><input type="number" id="f-sv" min="0" max="1" step="0.005"></label>
+        <label class="field"><span>Direction <output>°</output></span><input type="number" id="f-sa" min="0" max="355" step="5"></label>
+        <label class="field"><span>Detector radius</span><input type="number" id="f-dr" min="0.02" max="0.3" step="0.005"></label>
+        <label class="field"><span>Detector u</span><input type="number" id="f-du" min="0" max="1.6" step="0.005"></label>
+        <label class="field"><span>Detector v</span><input type="number" id="f-dv" min="0" max="1" step="0.005"></label>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="h-sel">
+      <h2 id="h-sel">Selected</h2>
+      <div id="selBox"></div>
+    </section>
+
+    <section class="group" aria-labelledby="h-test">
+      <h2 id="h-test">Test</h2>
+      <p class="note">Runs the start layout and the solution exactly as a player would see them, three times faster.</p>
+      <div class="row"><button class="btn primary" id="testBtn" type="button">Test level <kbd>T</kbd></button></div>
+      <div id="testBox"></div>
+    </section>
+
+    <section class="group" aria-labelledby="h-keys">
+      <h2 id="h-keys">Keys</h2>
+      <p class="note"><b>V W M B G P</b> pick a tool · <b>Delete</b> removes the selection · <b>arrows</b> nudge it (shift: 10×) · <b>[ ]</b> turn it · <b>Space</b> fires · <b>⌘Z</b> undo · <b>alt</b>-drag skips the grid.</p>
+    </section>
+  </aside>
+
+  <main>
+    <div class="bar">
+      <div class="seg" id="tools" role="group" aria-label="Tool"></div>
+      <div class="seg view" id="views" role="group" aria-label="Layout shown">
+        <button type="button" data-v="start">Start</button><button type="button" data-v="solution">Solution</button>
+      </div>
+      <div class="seg" id="modes" role="group" aria-label="Mode">
+        <button type="button" data-m="edit">Edit</button><button type="button" data-m="play">Play</button>
+      </div>
+      <span class="spacer"></span>
+      <label class="check"><input type="checkbox" id="snapBox" checked> Grid 0.01</label>
+      <button class="btn" id="undoBtn" type="button" aria-label="Undo">↶</button>
+      <button class="btn" id="redoBtn" type="button" aria-label="Redo">↷</button>
+      <button class="btn gold" id="fireBtn" type="button">Fire <kbd>Space</kbd></button>
+    </div>
+    <div class="stage" id="stage">
+      <iframe id="play" title="Level preview"></iframe>
+      <svg id="ov" aria-hidden="true"></svg>
+      <div class="stagenote" id="stageNote" hidden></div>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="textModal" hidden>
+  <div role="dialog" aria-modal="true" aria-labelledby="h-text">
+    <h2 class="sub" id="h-text">Level file</h2>
+    <p class="note">Save this text as <b>maze-levels.js</b> next to the playground to replace its levels. The playground's <b>Open levels…</b> button can also load it from any file name.</p>
+    <textarea id="textOut" readonly spellcheck="false"></textarea>
+    <div class="row"><button class="btn primary" id="copyBtn" type="button">Copy</button><button class="btn" id="closeText" type="button">Close</button></div>
+  </div>
+</div>
+
+<script src="maze-levels.js"></script>
+<script>
+'use strict';
+(() => {
+const $ = id => document.getElementById(id);
+const frame = $('play'), svg = $('ov'), stage = $('stage');
+const R4 = x => Math.round(x * 10000) / 10000;
+const rad = a => a * Math.PI / 180, deg = a => a * 180 / Math.PI;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TYPE_NAMES = { mirror: 'Mirror', splitter: 'Beam splitter', grating: 'Grating', phase: 'Phase plate' };
+const TOOLS = [['select', 'Select', 'V'], ['wall', 'Wall', 'W'], ['mirror', 'Mirror', 'M'], ['splitter', 'Splitter', 'B'], ['grating', 'Grating', 'G'], ['phase', 'Phase plate', 'P']];
+const DRAFT_KEY = 'quantum-maze-editor-draft';
+
+// What the playground tells us once it is ready: part defaults, the settings a player can be given, the board size in cells
+let schema = { defaults: {}, knobs: {}, typeKnobs: {}, source: { k: 1.2, width: 0.035 }, board: 512 };
+let ready = false;
+let rect = null;            // the board in stage pixels, from the playground
+let file, cur = 0, sel = null, tool = 'select', view = 'start', mode = 'edit', snap = true;
+let fileHandle = null, fileName = 'maze-levels.js', dirty = false, restored = false;
+let drag = null, hover = null, busy = null, played = null, playBase = null, lastShot = null;
+const results = new Map();  // level JSON → { start, solution }
+
+// ---------- the level file ----------
+const blankLevel = () => ({
+  name: 'New level', target: 50, hint: '', success: '', notes: '',
+  source: { at: [0.15, 0.5], angle: 0, k: schema.source.k, width: schema.source.width },
+  detector: { at: [1.45, 0.5], r: 0.07 }, walls: [], parts: [],
+});
+function normalize(f) {
+  const levels = Array.isArray(f?.levels) && f.levels.length ? f.levels : [blankLevel()];
+  for (const L of levels) {
+    L.source = { at: [0.15, 0.5], angle: 0, k: 1.2, width: 0.035, ...L.source };
+    L.detector = { at: [1.45, 0.5], r: 0.07, ...L.detector };
+    L.walls ??= []; L.parts ??= [];
+    for (const p of L.parts) p.adjust ??= {};
+  }
+  return { format: 'quantum-maze', version: 1, levels };
+}
+function parseFile(text) {
+  const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+  if (!Array.isArray(j.levels)) throw new Error('This file has no "levels" list.');
+  return normalize(j);
+}
+function pretty(obj) {   // JSON with coordinate pairs, ranges and wall segments kept on one line
+  const empty = v => v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length;
+  let s = JSON.stringify(obj, (k, v) => typeof v === 'number' ? R4(v) : (k === 'adjust' || k === 'solution') && empty(v) ? undefined : v, 2);
+  s = s.replace(/\[\s+(-?[\d.e+-]+),\s+(-?[\d.e+-]+)\s+\]/g, '[$1, $2]');
+  s = s.replace(/\[\s+(\[[^\[\]\n]*\]),\s+(\[[^\[\]\n]*\])\s+\]/g, '[$1, $2]');
+  s = s.replace(/"(adjust|solution)": \{\s+([^{}]*?)\s+\}/g, (m, k, body) => `"${k}": { ${body.replace(/\s*\n\s*/g, ' ')} }`);
+  return s;
+}
+const jsonText = () => pretty(file) + '\n';
+const fileText = () => '// Quantum maze levels for the Schrödinger Playground.\n' +
+  '// Made with level-editor.html. Everything after "window.MAZE_LEVELS =" is plain JSON, so it can also be edited by hand.\n' +
+  `window.MAZE_LEVELS = ${pretty(file)};\n`;
+
+const L = () => file.levels[cur];
+function saveDraft() {
+  try { if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify(file)); else localStorage.removeItem(DRAFT_KEY); } catch (_) { /* storage blocked */ }
+}
+function loadInitial() {
+  const shipped = window.MAZE_LEVELS && Array.isArray(window.MAZE_LEVELS.levels) ? normalize(structuredClone(window.MAZE_LEVELS)) : null;
+  let draft = null;
+  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (_) { /* none */ }
+  if (draft && Array.isArray(draft.levels) && JSON.stringify(normalize(draft)) !== JSON.stringify(shipped)) {
+    file = normalize(draft); dirty = true; restored = true;
+  } else file = shipped || normalize(null);
+}
+
+// ---------- start and solution views ----------
+// A player setting lives in part.adjust: angle (turn), slide (move along part.track), or a knob such as phase.
+// The start value is the part's own; the solution value, when set, is in part.solution.
+const keyOf = k => k === 'slide' ? 'at' : k;
+const isPlayer = (p, key) => !!p.adjust?.[key === 'at' ? 'slide' : key];
+const getP = (p, key, v = view) => v === 'solution' && isPlayer(p, key) && p.solution?.[key] != null ? p.solution[key] : p[key];
+function setP(p, key, val) { if (view === 'solution' && isPlayer(p, key)) (p.solution ??= {})[key] = val; else p[key] = val; }
+function shown(level, v = view) {   // the level as the player would meet it in the start or the solution layout
+  const c = structuredClone(level);
+  if (v === 'solution') for (const p of c.parts) for (const [k, on] of Object.entries(p.adjust)) {
+    if (on && p.solution?.[keyOf(k)] != null) p[keyOf(k)] = p.solution[keyOf(k)];
+  }
+  return c;
+}
+const hasPlayerParts = level => level.parts.some(p => Object.values(p.adjust).some(Boolean));
+
+// ---------- geometry (board units, v up) ----------
+const px = ([u, v]) => [rect.x + u / 1.6 * rect.w, rect.y + (1 - v) * rect.h];
+const toBoard = (x, y) => [(x - rect.x) / rect.w * 1.6, 1 - (y - rect.y) / rect.h];
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function segDist(p, a, b) {
+  const bx = b[0] - a[0], by = b[1] - a[1], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * bx + (p[1] - a[1]) * by) / Math.max(bx * bx + by * by, 1e-9)));
+  return Math.hypot(p[0] - a[0] - bx * t, p[1] - a[1] - by * t);
+}
+function ends(p) {
+  const [u, v] = getP(p, 'at'), a = rad(getP(p, 'angle')), h = p.length / 2;
+  return [[u - h * Math.cos(a), v - h * Math.sin(a)], [u + h * Math.cos(a), v + h * Math.sin(a)]];
+}
+const thickness = p => p.type === 'phase' ? p.thick : p.type === 'grating' ? (4 + p.bar) / schema.board : p.type === 'splitter' ? 0.006 : 0.02;
+function rotHandle(p) {   // a knob 18 px beyond the part's end
+  const [, b] = ends(p).map(px), a = rad(getP(p, 'angle'));
+  return [b[0] + Math.cos(a) * 18, b[1] - Math.sin(a) * 18];
+}
+function aimHandle() { const s = L().source, a = rad(s.angle), [x, y] = px(s.at); return [x + Math.cos(a) * 46, y - Math.sin(a) * 46]; }
+function radiusHandle() { const d = L().detector, [x, y] = px(d.at); return [x + d.r * rect.h, y]; }
+const gridStep = alt => snap && !alt ? 0.01 : 0.001;
+const snapPt = ([u, v], alt) => {
+  const g = gridStep(alt);
+  return [R4(Math.min(1.6, Math.max(0, Math.round(u / g) * g))), R4(Math.min(1, Math.max(0, Math.round(v / g) * g)))];
+};
+const snapAngle = (a, mod) => ((Math.round(a / 5) * 5) % mod + mod) % mod;
+function onTrack(track, b) {   // nearest point of a track, in steps of 0.005 board units (as the playground snaps it)
+  const [a, c] = track, du = c[0] - a[0], dv = c[1] - a[1], len = Math.hypot(du, dv);
+  if (!len) return a.slice();
+  const s = Math.max(0, Math.min(len, Math.round(((b[0] - a[0]) * du + (b[1] - a[1]) * dv) / len / 0.005) * 0.005));
+  return [R4(a[0] + du / len * s), R4(a[1] + dv / len * s)];
+}
+
+// ---------- talking to the playground ----------
+const CANDIDATES = ['schrodinger-playground.html', 'index.html'];
+let candidate = 0, readyTimer;
+async function connect() {
+  if (candidate === 0 && location.protocol !== 'file:') {   // over http the playground's file name can be looked up
+    for (const [i, c] of CANDIDATES.entries()) {
+      try { if ((await fetch(c, { method: 'HEAD' })).ok) { candidate = i; break; } } catch (_) { /* try the next */ }
+    }
+  }
+  frame.src = CANDIDATES[candidate] + '#embed';
+  clearTimeout(readyTimer);
+  readyTimer = setTimeout(() => {
+    if (ready) return;
+    if (++candidate < CANDIDATES.length) connect();
+    else note('<b>The playground did not load.</b> Keep level-editor.html, schrodinger-playground.html and maze-levels.js in one folder.');
+  }, 4000);
+}
+const send = msg => frame.contentWindow?.postMessage(msg, '*');
+let sendQueued = false;
+function sendLevel() {
+  if (!ready || mode !== 'edit' || busy || sendQueued) return;
+  sendQueued = true;
+  requestAnimationFrame(() => { sendQueued = false; if (!busy && mode === 'edit') send({ maze: 'level', level: shown(L()) }); });
+}
+window.addEventListener('message', e => {
+  if (e.source !== frame.contentWindow || !e.data || typeof e.data !== 'object') return;
+  const m = e.data;
+  if (m.maze === 'ready') {
+    ready = true; clearTimeout(readyTimer);
+    schema = { ...schema, ...m };
+    $('playLink').href = CANDIDATES[candidate];
+    if (mode === 'play') send({ maze: 'level', level: shown(L()) }); else sendLevel();
+    renderAll();
+  } else if (m.maze === 'view') { rect = m.rect; drawOverlay(); }
+  else if (m.maze === 'progress' && busy && m.id === busy.id) note(`Testing the <b>${busy.label}</b> layout · ${Math.round(100 * m.got)}% caught so far`);
+  else if (m.maze === 'result') {
+    if (busy && m.id === busy.id) busy.resolve(m.got);
+    else if (mode === 'play') { lastShot = m.got; playNote(); }
+  } else if (m.maze === 'parts' && mode === 'play') { played = m.parts; playNote(); }
+});
+
+// ---------- changes and undo ----------
+let hist = [], hpos = -1;
+function record() {
+  const s = JSON.stringify({ file, cur });
+  if (hist[hpos] === s) return;
+  hist = hist.slice(0, hpos + 1); hist.push(s);
+  if (hist.length > 300) hist.shift();
+  hpos = hist.length - 1; updateUndo();
+}
+function restore(s) {
+  ({ file, cur } = JSON.parse(s)); dirty = true;
+  if (sel && !(sel.kind === 'part' ? L().parts[sel.i] : sel.kind === 'wall' ? L().walls[sel.i] : true)) sel = null;
+  saveDraft(); renderAll(); sendLevel();
+}
+function undo() { if (hpos > 0) restore(hist[--hpos]); updateUndo(); }
+function redo() { if (hpos < hist.length - 1) restore(hist[++hpos]); updateUndo(); }
+function updateUndo() { $('undoBtn').disabled = hpos <= 0; $('redoBtn').disabled = hpos >= hist.length - 1; }
+function changed(commit) {   // after every edit: show it on the board and in the sidebar; commit marks an undo step
+  dirty = true;
+  sendLevel(); drawOverlay(); syncFields(); fileNote(); renderList(); renderTest();
+  saveDraft();
+  if (commit) record();
+}
+
+// ---------- sidebar ----------
+let fields = [];
+function bind(el, get, set, { num = false } = {}) {
+  const show = () => { const v = get(); el.value = v == null ? '' : num ? R4(v) : v; };
+  show();
+  el.addEventListener('input', () => {
+    const v = num ? parseFloat(el.value) : el.value;
+    if (num && !Number.isFinite(v)) return;
+    set(v); changed(false);
+  });
+  el.addEventListener('change', () => { record(); show(); });
+  fields.push({ el, show });
+}
+function syncFields() {
+  fields = fields.filter(f => f.el.isConnected);
+  for (const f of fields) if (document.activeElement !== f.el) f.show();
+  const k = L().source.k;
+  $('o-lambda').textContent = `λ = ${(2 * Math.PI / k).toFixed(1)} Δx`;
+  for (const o of document.querySelectorAll('[data-readout]')) o.textContent = readout(o.dataset.readout);
+}
+loadInitial();
+// the level and source fields always refer to the current level
+bind($('f-name'), () => L().name, v => { L().name = v; });
+bind($('f-target'), () => L().target, v => { L().target = Math.max(1, Math.min(100, Math.round(v))); }, { num: true });
+bind($('f-hint'), () => L().hint, v => { L().hint = v; });
+bind($('f-success'), () => L().success, v => { L().success = v; });
+bind($('f-notes'), () => L().notes, v => { L().notes = v; });
+bind($('f-k'), () => L().source.k, v => { L().source.k = Math.max(0.3, Math.min(1.6, v)); }, { num: true });
+bind($('f-width'), () => Math.round(L().source.width * schema.board), v => { L().source.width = R4(Math.max(4, v) / schema.board); }, { num: true });
+bind($('f-su'), () => L().source.at[0], v => { L().source.at = [v, L().source.at[1]]; }, { num: true });
+bind($('f-sv'), () => L().source.at[1], v => { L().source.at = [L().source.at[0], v]; }, { num: true });
+bind($('f-sa'), () => L().source.angle, v => { L().source.angle = ((v % 360) + 360) % 360; }, { num: true });
+bind($('f-du'), () => L().detector.at[0], v => { L().detector.at = [v, L().detector.at[1]]; }, { num: true });
+bind($('f-dv'), () => L().detector.at[1], v => { L().detector.at = [L().detector.at[0], v]; }, { num: true });
+bind($('f-dr'), () => L().detector.r, v => { L().detector.r = Math.max(0.02, v); }, { num: true });
+
+function renderList() {
+  const ol = $('levelList');
+  const items = file.levels.map((lv, i) => {
+    const r = results.get(JSON.stringify(lv)), good = r && r.solution * 100 >= lv.target && r.start * 100 < lv.target;
+    const st = !r ? '' : good ? '<span class="st ok" title="Tested: the solution wins and the start does not">✓</span>'
+                              : '<span class="st no" title="Tested: see the Test section">✗</span>';
+    return `<li><button type="button" data-i="${i}" aria-current="${i === cur}"><span class="n">${i + 1}</span><span class="t">${esc(lv.name || 'Untitled')}</span><span class="pct">${lv.target}%</span>${st || '<span class="st"></span>'}</button></li>`;
+  }).join('');
+  if (ol.innerHTML !== items) ol.innerHTML = items;
+}
+$('levelList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  goLevel(+b.dataset.i);
+});
+function goLevel(i) {
+  cur = Math.max(0, Math.min(file.levels.length - 1, i)); sel = null; played = null; lastShot = null;
+  if (mode === 'play') setMode('edit');
+  renderAll(); sendLevel(); record();
+}
+$('newBtn').onclick = () => { file.levels.splice(cur + 1, 0, blankLevel()); cur++; sel = null; renderAll(); changed(true); };
+$('dupBtn').onclick = () => {
+  const c = structuredClone(L()); c.name += ' (copy)';
+  file.levels.splice(cur + 1, 0, c); cur++; sel = null; renderAll(); changed(true);
+};
+$('delLevelBtn').onclick = () => {
+  if (file.levels.length === 1) file.levels[0] = blankLevel(); else file.levels.splice(cur, 1);
+  cur = Math.min(cur, file.levels.length - 1); sel = null; renderAll(); changed(true);
+};
+function moveLevel(d) {
+  const j = cur + d;
+  if (j < 0 || j >= file.levels.length) return;
+  [file.levels[cur], file.levels[j]] = [file.levels[j], file.levels[cur]]; cur = j; changed(true);
+}
+$('upBtn').onclick = () => moveLevel(-1);
+$('downBtn').onclick = () => moveLevel(1);
+
+// Readouts that explain a part's numbers in terms of the wave
+function readout(key) {
+  const [what, i] = key.split(':'), p = L().parts[+i], k = L().source.k, lambda = 2 * Math.PI / k;
+  if (!p) return '';
+  if (what === 'period') {
+    const d = getP(p, 'period'), s = lambda / d;
+    return `${(d / lambda).toFixed(2)} λ · 1st order ${s < 1 ? Math.round(deg(Math.asin(s))) + '°' : 'none'}`;
+  }
+  if (what === 'thick') return `${Math.round(p.thick * schema.board)} Δx`;
+  return '';
+}
+
+function renderSel() {
+  const box = $('selBox');
+  fields = fields.filter(f => !box.contains(f.el));
+  if (!sel) {
+    box.innerHTML = '<p class="note">Click a part or wall on the board to edit it, or pick a tool above the board to add one.</p>';
+    return;
+  }
+  if (sel.kind === 'source' || sel.kind === 'detector') {
+    box.innerHTML = `<p class="note">The ${sel.kind} is edited in <b>Source and detector</b>. Drag it on the board, ${sel.kind === 'source' ? 'or drag the ring at the end of its arrow to aim it' : 'or drag the ring on its edge to resize it'}.</p>`;
+    return;
+  }
+  if (sel.kind === 'wall') {
+    const w = L().walls[sel.i];
+    box.innerHTML = `<div class="grid2">
+      <label class="field"><span>From u</span><input type="number" step="0.005" id="w-0u"></label><label class="field"><span>From v</span><input type="number" step="0.005" id="w-0v"></label>
+      <label class="field"><span>To u</span><input type="number" step="0.005" id="w-1u"></label><label class="field"><span>To v</span><input type="number" step="0.005" id="w-1v"></label>
+      </div><p class="note">A hard wall, height 3.5. Drag its ends on the board.</p>
+      <div class="row"><button class="btn" type="button" id="selDel">Delete wall</button></div>`;
+    for (const e of [0, 1]) for (const c of [0, 1]) bind($(`w-${e}${'uv'[c]}`), () => w[e][c], v => { w[e] = c ? [w[e][0], v] : [v, w[e][1]]; }, { num: true });
+    $('selDel').onclick = deleteSel;
+    return;
+  }
+  const i = sel.i, p = L().parts[i], K = schema.knobs, knobs = schema.typeKnobs[p.type] || [];
+  const tag = key => view === 'solution' && isPlayer(p, key) ? ' <span class="tag">solution</span>' : '';
+  const num = (id, label, step, extra = '') => `<label class="field"><span>${label}${extra}</span><input type="number" step="${step}" id="${id}"></label>`;
+  let h = `<p class="note"><b>${TYPE_NAMES[p.type]}</b> · part ${i + 1} of ${L().parts.length}</p><div class="grid2">`;
+  h += num('p-u', 'Centre u' + tag('at'), 0.005) + num('p-v', 'Centre v' + tag('at'), 0.005);
+  h += num('p-angle', 'Angle (°)' + tag('angle'), 5) + num('p-length', 'Length', 0.01);
+  if (p.type === 'splitter' || p.type === 'grating') h += num('p-v0', 'Barrier height' + tag('v'), 0.05);
+  if (p.type === 'grating') {
+    h += num('p-period', 'Period (Δx)' + tag('period'), 0.5) + num('p-bar', 'Bar width (Δx)' + tag('bar'), 0.5);
+    h += `<p class="note field wide"><output data-readout="period:${i}"></output></p>`;
+  }
+  if (p.type === 'phase') h += num('p-phase', 'Phase shift (°)' + tag('phase'), 15) + num('p-thick', 'Thickness', 0.005, ` <output data-readout="thick:${i}"></output>`);
+  h += '</div><h3 class="sub">The player can</h3>';
+  h += `<label class="check"><input type="checkbox" id="a-angle"> Turn it</label>`;
+  h += `<label class="check"><input type="checkbox" id="a-slide"> Slide it along a track</label>`;
+  for (const k of knobs) {
+    h += `<label class="check"><input type="checkbox" id="a-${k}"> Set its ${K[k].label.toLowerCase()}</label>`;
+    if (p.adjust[k]) h += `<div class="grid2">${num('r-' + k + '-0', 'From', K[k].step)}${num('r-' + k + '-1', 'To', K[k].step)}</div>`;
+  }
+  const keys = Object.keys(p.adjust).filter(k => p.adjust[k]);
+  if (keys.length) {
+    h += '<h3 class="sub">Solution</h3><div class="grid2">';
+    for (const k of keys) {
+      if (k === 'slide') h += num('s-u', 'Centre u', 0.005) + num('s-v', 'Centre v', 0.005);
+      else h += num('s-' + k, k === 'angle' ? 'Angle (°)' : K[k].label, k === 'angle' ? 5 : K[k].step);
+    }
+    h += '</div><p class="note">Switch to <b>Solution</b> above the board to set these by dragging. Left empty, the solution keeps the start value.</p>';
+  }
+  h += '<div class="row"><button class="btn" type="button" id="selDel">Delete part</button></div>';
+  box.innerHTML = h;
+
+  const solutionNum = (id, key, idx) => bind($(id), () => idx == null ? p.solution?.[key] : p.solution?.[key]?.[idx],
+    v => { p.solution ??= {}; if (idx == null) p.solution[key] = v; else { const at = (p.solution.at ?? p.at).slice(); at[idx] = v; p.solution.at = at; } }, { num: true });
+  bind($('p-u'), () => getP(p, 'at')[0], v => setP(p, 'at', [v, getP(p, 'at')[1]]), { num: true });
+  bind($('p-v'), () => getP(p, 'at')[1], v => setP(p, 'at', [getP(p, 'at')[0], v]), { num: true });
+  bind($('p-angle'), () => getP(p, 'angle'), v => setP(p, 'angle', ((v % 180) + 180) % 180), { num: true });
+  bind($('p-length'), () => p.length, v => { p.length = Math.max(0.02, v); }, { num: true });
+  if ($('p-v0')) bind($('p-v0'), () => getP(p, 'v'), v => setP(p, 'v', v), { num: true });
+  if ($('p-period')) bind($('p-period'), () => getP(p, 'period'), v => setP(p, 'period', Math.max(3, v)), { num: true });
+  if ($('p-bar')) bind($('p-bar'), () => getP(p, 'bar'), v => setP(p, 'bar', Math.max(1, v)), { num: true });
+  if ($('p-phase')) bind($('p-phase'), () => getP(p, 'phase'), v => setP(p, 'phase', v), { num: true });
+  if ($('p-thick')) bind($('p-thick'), () => p.thick, v => { p.thick = Math.max(0.01, v); }, { num: true });
+  const flag = (k, on) => {
+    if (on) {
+      p.adjust[k] = true;
+      if (k === 'slide' && !p.track) { const [u, v] = p.at; p.track = [[R4(Math.max(0, u - 0.15)), v], [R4(Math.min(1.6, u + 0.15)), v]]; }
+    } else {
+      delete p.adjust[k]; if (p.solution) delete p.solution[keyOf(k)];
+      if (k === 'slide') delete p.track;
+      if (p.solution && !Object.keys(p.solution).length) delete p.solution;
+    }
+    renderSel(); changed(true);
+  };
+  for (const k of ['angle', 'slide', ...knobs]) {
+    const c = $('a-' + k);
+    c.checked = !!p.adjust[k];
+    c.onchange = () => flag(k, c.checked);
+  }
+  for (const k of knobs) if (p.adjust[k]) for (const e of [0, 1]) {
+    bind($(`r-${k}-${e}`), () => (Array.isArray(p.adjust[k]) ? p.adjust[k] : K[k].range)[e],
+      v => { const r = (Array.isArray(p.adjust[k]) ? p.adjust[k] : K[k].range).slice(); r[e] = v; p.adjust[k] = r; }, { num: true });
+  }
+  for (const k of keys) {
+    if (k === 'slide') { solutionNum('s-u', 'at', 0); solutionNum('s-v', 'at', 1); } else solutionNum('s-' + k, k);
+  }
+  $('selDel').onclick = deleteSel;
+}
+
+function renderTest() {
+  const box = $('testBox'), lv = L(), r = results.get(JSON.stringify(lv));
+  $('testBtn').innerHTML = busy ? 'Stop test' : 'Test level <kbd>T</kbd>';
+  if (!r) { box.innerHTML = busy ? '' : '<p class="note">Not tested since the last change.</p>'; return; }
+  const t = lv.target, pct = x => Math.round(100 * x) + '%';
+  const sOk = r.solution * 100 >= t, stOk = r.start * 100 < t;
+  let h = '<div class="results">';
+  h += `<span>Start</span><b>${pct(r.start)}</b><span class="${stOk ? 'ok' : 'warn'}">${stOk ? 'below the target, as it should be' : 'already reaches the target'}</span>`;
+  if (r.player) h += `<span>Solution</span><b>${pct(r.solution)}</b><span class="${sOk ? 'ok' : 'no'}">${sOk ? `beats the ${t}% target` : `misses the ${t}% target`}</span>`;
+  else h += `<span>Solution</span><b>–</b><span class="warn">nothing for the player to change yet</span>`;
+  h += '</div>';
+  const fair = Math.floor(75 * r.solution);
+  if (r.player && fair >= 1 && fair !== t) h += `<div class="row"><button class="btn" type="button" id="fairBtn">Set the target to ${fair}% (¾ of the solution)</button></div>`;
+  box.innerHTML = h;
+  if ($('fairBtn')) $('fairBtn').onclick = () => { const res = results.get(JSON.stringify(lv)); lv.target = fair; results.set(JSON.stringify(lv), res); changed(true); };
+}
+
+function fileNote() {
+  const n = $('fileNote');
+  if (restored && dirty) n.innerHTML = `Restored the levels you were editing in this browser. <a href="#" id="discardDraft">Discard them and reload ${esc(fileName)}</a>`;
+  else n.innerHTML = `<b>${esc(fileName)}</b> · ${file.levels.length} level${file.levels.length === 1 ? '' : 's'}${dirty ? ' · unsaved changes' : ''}`;
+  const d = $('discardDraft');
+  if (d) d.onclick = e => {
+    e.preventDefault(); restored = false; dirty = false; saveDraft();
+    file = window.MAZE_LEVELS ? normalize(structuredClone(window.MAZE_LEVELS)) : normalize(null); cur = 0; sel = null;
+    renderAll(); sendLevel(); record();
+  };
+}
+
+function renderBar() {
+  $('tools').innerHTML = TOOLS.map(([t, label, k]) => `<button type="button" data-t="${t}" aria-pressed="${tool === t}" title="${label} (${k})">${label}</button>`).join('');
+  for (const b of $('views').children) b.setAttribute('aria-pressed', String(b.dataset.v === view));
+  for (const b of $('modes').children) b.setAttribute('aria-pressed', String(b.dataset.m === mode));
+}
+$('tools').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTool(b.dataset.t); });
+$('views').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); });
+$('modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); });
+$('snapBox').onchange = () => { snap = $('snapBox').checked; };
+function setTool(t) { tool = t; if (mode === 'play') setMode('edit'); renderBar(); drawOverlay(); }
+function setView(v) { view = v; renderBar(); renderSel(); stageNote(); sendLevel(); drawOverlay(); if (mode === 'play') setMode('play'); }
+function setMode(m) {
+  if (busy) return;
+  mode = m; played = null; lastShot = null;
+  stage.classList.toggle('play', m === 'play');
+  playBase = m === 'play' ? shown(L()) : null;   // what the board showed when play began, to find what the designer changed
+  if (m === 'play') send({ maze: 'level', level: playBase }); else sendLevel();
+  renderBar(); drawOverlay(); stageNote();
+  if (m === 'play') frame.focus();
+}
+
+function renderAll() { renderBar(); renderList(); renderSel(); syncFields(); fileNote(); renderTest(); stageNote(); drawOverlay(); updateUndo(); }
+
+// ---------- notes over the board ----------
+function note(html, gold) {
+  const n = $('stageNote');
+  n.hidden = !html; n.classList.toggle('gold', !!gold);
+  n.innerHTML = !html ? '' : /^<(span|div)/.test(html) ? html : `<span>${html}</span>`;   // the note stacks its blocks; inline text stays one block
+}
+function stageNote() {
+  if (busy) return;
+  if (!ready) return note('Loading the playground…');
+  if (mode === 'play') return playNote();
+  if (view === 'solution') return note('<b>Solution layout.</b> Turning, sliding or setting a part the player controls now changes the solution, not the start.', true);
+  if (tool === 'wall') return note('Drag on the board to draw a wall.');
+  if (tool !== 'select') return note(`Click on the board to place a ${TYPE_NAMES[tool].toLowerCase()}.`);
+  note('');
+}
+function playNote() {
+  let h = `<span><b>Playing ${view === 'solution' ? 'the solution' : 'the start'} layout.</b> Use the board as a student would: set the gold parts, then tap the gold arrow.</span>`;
+  if (lastShot != null) h += `<span>Last shot: <b>${Math.round(100 * lastShot)}%</b> caught · target ${L().target}%</span>`;
+  if (played) h += '<div class="row"><button class="btn gold" type="button" id="keepSol">Keep my changes as the solution</button><button class="btn" type="button" id="keepStart">Keep them as the start</button></div>';
+  note(h, true);
+  if (played) {
+    $('keepSol').onclick = () => keepPlayed('solution');
+    $('keepStart').onclick = () => keepPlayed('start');
+  }
+}
+function keepPlayed(which) {   // only the settings changed during play, so untouched parts keep their own solution
+  L().parts.forEach((p, i) => {
+    for (const [k, v] of Object.entries(played[i] || {})) {
+      if (JSON.stringify(v) === JSON.stringify(playBase?.parts[i]?.[k])) continue;
+      if (which === 'solution') (p.solution ??= {})[k] = v; else p[k] = v;
+    }
+  });
+  playBase = shown(L());
+  changed(true); renderSel();
+  note(`<b>Kept as the ${which}.</b> Keep playing, or switch back to Edit.`, true);
+}
+
+// ---------- the overlay: handles over the live board ----------
+function drawOverlay() {
+  if (!rect || mode === 'play' || busy) { svg.innerHTML = ''; return; }
+  const lv = L(), out = [], U = rect.h;
+  const ln = (a, b, cls, w = 1) => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="${cls}" stroke-width="${w}"/>`;
+  const handle = (c, cls = '', r = 5) => `<circle cx="${c[0]}" cy="${c[1]}" r="${r}" class="handle ${cls}"/>`;
+  out.push(`<rect x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" class="edge"/>`);
+  lv.parts.forEach((p, i) => {
+    const [a, b] = ends(p).map(px), isSel = sel?.kind === 'part' && sel.i === i, isHover = hover?.kind === 'part' && hover.i === i;
+    out.push(ln(a, b, isSel ? 'sel' : isHover ? 'hover' : 'ghost', thickness(p) * U + (isSel || isHover ? 12 : 6)));
+  });
+  lv.walls.forEach((w, i) => {
+    const isSel = sel?.kind === 'wall' && sel.i === i, isHover = hover?.kind === 'wall' && hover.i === i;
+    if (isSel || isHover) out.push(ln(px(w[0]), px(w[1]), isSel ? 'sel' : 'hover', 0.024 * U + 12));
+  });
+  if (sel?.kind === 'part') {
+    const p = lv.parts[sel.i], [, b] = ends(p).map(px), r = rotHandle(p);
+    out.push(ln(b, r, 'guide'), handle(r, isPlayer(p, 'angle') ? 'gold' : ''));
+    if (p.adjust.slide && p.track) for (const e of p.track) out.push(`<rect x="${px(e)[0] - 5}" y="${px(e)[1] - 5}" width="10" height="10" class="handle gold"/>`);
+  }
+  if (sel?.kind === 'wall') for (const e of lv.walls[sel.i]) out.push(handle(px(e)));
+  const src = px(lv.source.at), aim = aimHandle();
+  out.push(ln(src, aim, 'guide'), handle(aim, '', 4.5));
+  if (sel?.kind === 'source') out.push(`<circle cx="${src[0]}" cy="${src[1]}" r="14" class="sel" stroke-width="2"/>`);
+  const det = lv.detector, dp = px(det.at);
+  if (sel?.kind === 'detector' || hover?.kind === 'detector') out.push(`<circle cx="${dp[0]}" cy="${dp[1]}" r="${det.r * U}" class="${sel?.kind === 'detector' ? 'sel' : 'hover'}" stroke-width="8"/>`);
+  if (sel?.kind === 'detector') out.push(handle(radiusHandle()));
+  if (drag?.kind === 'newWall') out.push(ln(px(drag.from), px(drag.to), 'preview', 0.024 * U));
+  svg.innerHTML = out.join('');
+}
+
+function hit(x, y) {
+  const lv = L(), P = [x, y], U = rect.h;
+  if (sel?.kind === 'part') {
+    const p = lv.parts[sel.i];
+    if (dist(P, rotHandle(p)) < 10) return { kind: 'rotate', i: sel.i };
+    if (p.adjust.slide && p.track) for (const e of [0, 1]) if (dist(P, px(p.track[e])) < 9) return { kind: 'trackEnd', i: sel.i, e };
+  }
+  if (sel?.kind === 'wall') for (const e of [0, 1]) if (dist(P, px(lv.walls[sel.i][e])) < 9) return { kind: 'wallEnd', i: sel.i, e };
+  if (sel?.kind === 'detector' && dist(P, radiusHandle()) < 9) return { kind: 'radius' };
+  if (dist(P, aimHandle()) < 9) return { kind: 'aim' };
+  if (dist(P, px(lv.source.at)) < 14) return { kind: 'source' };
+  let best = null, bd = Infinity;
+  lv.parts.forEach((p, i) => {
+    const d = segDist(P, ...ends(p).map(px)) - thickness(p) * U / 2;
+    if (d < 9 && d < bd) { bd = d; best = { kind: 'part', i }; }
+  });
+  if (best) return best;
+  for (const [i, p] of lv.parts.entries()) if (p.adjust.slide && p.track && segDist(P, ...p.track.map(px)) < 6) return { kind: 'track', i };
+  for (const [i, w] of lv.walls.entries()) if (segDist(P, px(w[0]), px(w[1])) < 0.012 * U + 6) return { kind: 'wall', i };
+  if (dist(P, px(lv.detector.at)) < lv.detector.r * U + 6) return { kind: 'detector' };
+  return null;
+}
+const CURSORS = { rotate: 'grab', aim: 'grab', radius: 'ew-resize', trackEnd: 'move', wallEnd: 'move', track: 'move', part: 'move', wall: 'move', source: 'move', detector: 'move' };
+const local = e => { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+
+function newPart(type, at) {
+  const p = { type, at, angle: type === 'grating' || type === 'phase' ? 90 : 45, ...structuredClone(schema.defaults[type] || {}) };
+  p.adjust = type === 'mirror' || type === 'grating' ? { angle: true } : type === 'phase' ? { phase: true } : {};
+  return p;
+}
+
+svg.addEventListener('pointerdown', e => {
+  if (!rect || busy || e.button > 0) return;
+  try { svg.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ }
+  const [x, y] = local(e), b = toBoard(x, y), lv = L();
+  if (tool === 'wall') { const a = snapPt(b, e.altKey); drag = { kind: 'newWall', from: a, to: a }; drawOverlay(); return; }
+  if (tool !== 'select') {
+    lv.parts.push(newPart(tool, snapPt(b, e.altKey)));
+    sel = { kind: 'part', i: lv.parts.length - 1 };
+    tool = 'select'; renderBar(); renderSel(); stageNote(); changed(true);
+    return;
+  }
+  const h = hit(x, y);
+  if (!h) { sel = null; renderSel(); drawOverlay(); return; }
+  if (['part', 'wall', 'source', 'detector', 'track'].includes(h.kind)) {
+    const next = h.kind === 'track' ? { kind: 'part', i: h.i } : { kind: h.kind, i: h.i };
+    if (next.kind !== sel?.kind || next.i !== sel?.i) { sel = next; renderSel(); }
+  }
+  drag = { ...h, start: b, orig: structuredClone(lv), moved: false };
+  drawOverlay();
+});
+svg.addEventListener('pointermove', e => {
+  if (!rect) return;
+  const [x, y] = local(e), b = toBoard(x, y);
+  if (!drag) {
+    const h = tool === 'select' ? hit(x, y) : null;
+    svg.style.cursor = tool !== 'select' ? 'crosshair' : h ? CURSORS[h.kind] : 'default';
+    if (JSON.stringify(h) !== JSON.stringify(hover)) { hover = h; drawOverlay(); }
+    return;
+  }
+  const lv = L(), o = drag.orig, db = [b[0] - drag.start[0], b[1] - drag.start[1]], alt = e.altKey;
+  const moved = (a, d = db) => snapPt([a[0] + d[0], a[1] + d[1]], alt);
+  if (Math.hypot(...db) * rect.h > 2) drag.moved = true;
+  if (!drag.moved) return;
+  const p = drag.i != null ? lv.parts[drag.i] : null, op = drag.i != null ? o.parts[drag.i] : null;
+  switch (drag.kind) {
+    case 'newWall': drag.to = snapPt(b, alt); drawOverlay(); return;
+    case 'part':
+      if (p.adjust.slide && p.track) setP(p, 'at', onTrack(p.track, b));   // a sliding part stays on its track; drag the track to move both
+      else p.at = moved(op.at);
+      break;
+    case 'rotate': {
+      const c = getP(p, 'at');
+      setP(p, 'angle', snapAngle(deg(Math.atan2(b[1] - c[1], b[0] - c[0])), 180));
+      break;
+    }
+    case 'track': {
+      const g = gridStep(alt), d = [Math.round(db[0] / g) * g, Math.round(db[1] / g) * g];
+      p.track = op.track.map(t => moved(t, d)); p.at = moved(op.at, d);
+      if (op.solution?.at) p.solution.at = moved(op.solution.at, d);
+      break;
+    }
+    case 'trackEnd':
+      p.track[drag.e] = snapPt(b, alt);
+      p.at = onTrack(p.track, op.at);
+      if (op.solution?.at) p.solution.at = onTrack(p.track, op.solution.at);
+      break;
+    case 'wall': { const w = o.walls[drag.i], g = gridStep(alt), d = [Math.round(db[0] / g) * g, Math.round(db[1] / g) * g]; lv.walls[drag.i] = w.map(t => moved(t, d)); break; }
+    case 'wallEnd': lv.walls[drag.i][drag.e] = snapPt(b, alt); break;
+    case 'source': lv.source.at = moved(o.source.at); break;
+    case 'aim': { const s = lv.source.at; lv.source.angle = snapAngle(deg(Math.atan2(b[1] - s[1], b[0] - s[0])), 360); break; }
+    case 'detector': lv.detector.at = moved(o.detector.at); break;
+    case 'radius': lv.detector.r = R4(Math.max(0.02, Math.round(dist(b, lv.detector.at) / 0.005) * 0.005)); break;
+  }
+  changed(false);
+});
+function endDrag(e) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === 'newWall') {
+    if (e.type === 'pointerup') d.to = snapPt(toBoard(...local(e)), e.altKey);
+    if (e.type === 'pointerup' && dist(d.from, d.to) >= 0.02) { L().walls.push([d.from, d.to]); sel = { kind: 'wall', i: L().walls.length - 1 }; renderSel(); changed(true); }
+    else drawOverlay();
+    return;
+  }
+  if (d.moved) record();
+  drawOverlay(); syncFields();
+}
+svg.addEventListener('pointerup', endDrag);
+svg.addEventListener('pointercancel', endDrag);
+svg.addEventListener('pointerleave', () => { if (!drag && hover) { hover = null; drawOverlay(); } });
+
+function deleteSel() {
+  if (!sel) return;
+  if (sel.kind === 'part') L().parts.splice(sel.i, 1);
+  else if (sel.kind === 'wall') L().walls.splice(sel.i, 1);
+  else return;
+  sel = null; renderSel(); changed(true);
+}
+function nudge(du, dv) {
+  const lv = L(), sh = a => [R4(a[0] + du), R4(a[1] + dv)];
+  if (sel?.kind === 'part') {
+    const p = lv.parts[sel.i];
+    p.at = sh(p.at); if (p.track) p.track = p.track.map(sh); if (p.solution?.at) p.solution.at = sh(p.solution.at);
+  } else if (sel?.kind === 'wall') lv.walls[sel.i] = lv.walls[sel.i].map(sh);
+  else if (sel?.kind === 'source') lv.source.at = sh(lv.source.at);
+  else if (sel?.kind === 'detector') lv.detector.at = sh(lv.detector.at);
+  else return;
+  changed(true);
+}
+
+// ---------- testing ----------
+let runSeq = 0;
+function run(level, label) {
+  return new Promise(resolve => {
+    busy = { id: ++runSeq, label, resolve };
+    drawOverlay();
+    note(`Testing the <b>${label}</b> layout…`);
+    send({ maze: 'run', id: busy.id, level });
+  });
+}
+async function testLevel() {
+  if (busy) {   // stop
+    send({ maze: 'stop' });
+    const b = busy; busy = { stopped: true }; b.resolve(null);
+    return;
+  }
+  if (!ready) return;
+  if (mode === 'play') setMode('edit');
+  const lv = structuredClone(L()), key = JSON.stringify(lv), player = hasPlayerParts(lv);
+  stage.classList.add('busy'); drawOverlay();
+  $('testBtn').innerHTML = 'Stop test';
+  const start = await run(shown(lv, 'start'), 'start');
+  const solution = start == null || busy?.stopped ? null : player ? await run(shown(lv, 'solution'), 'solution') : start;
+  const stopped = busy?.stopped || solution == null;
+  busy = null; stage.classList.remove('busy');
+  if (!stopped) results.set(key, { start, solution, player });
+  note(''); renderTest(); renderList(); stageNote(); sendLevel(); drawOverlay();
+}
+$('testBtn').onclick = testLevel;
+$('fireBtn').onclick = () => { if (ready && !busy) send({ maze: 'fire' }); };
+
+// ---------- opening and saving ----------
+const pickerTypes = [{ description: 'Maze levels', accept: { 'text/javascript': ['.js'], 'application/json': ['.json'] } }];
+function loadText(text, name) {
+  try { file = parseFile(text); } catch (err) { note(`<b>${esc(name)} is not a maze level file.</b> ${esc(err.message)}`); return false; }
+  cur = 0; sel = null; fileName = name; dirty = false; restored = false;
+  saveDraft(); renderAll(); sendLevel(); record();
+  return true;
+}
+$('openBtn').onclick = async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      const [h] = await window.showOpenFilePicker({ types: pickerTypes });
+      const f = await h.getFile();
+      if (loadText(await f.text(), f.name)) fileHandle = /\.js$/i.test(f.name) ? h : null;
+      return;
+    } catch (err) { if (err.name === 'AbortError') return; }
+  }
+  $('fileInput').click();
+};
+$('fileInput').onchange = async () => {
+  const f = $('fileInput').files[0];
+  $('fileInput').value = '';
+  if (f) { fileHandle = null; loadText(await f.text(), f.name); }
+};
+function saved(name) {
+  fileName = name; dirty = false; restored = false; saveDraft(); fileNote();
+  note(`<b>Saved ${esc(name)}.</b>`); setTimeout(stageNote, 2500);
+}
+async function save() {
+  const inArtifact = !!window.claude?.use;
+  try {   // Chrome and Edge can write the file in place
+    if (fileHandle) { const w = await fileHandle.createWritable(); await w.write(fileText()); await w.close(); return saved(fileHandle.name); }
+    if (window.showSaveFilePicker && !inArtifact) {
+      const h = await window.showSaveFilePicker({ suggestedName: 'maze-levels.js', types: [{ description: 'Maze levels', accept: { 'text/javascript': ['.js'] } }] });
+      const w = await h.createWritable(); await w.write(fileText()); await w.close();
+      fileHandle = h; return saved(h.name);
+    }
+  } catch (err) { if (err.name === 'AbortError') return; fileHandle = null; }
+  if (inArtifact) {   // on claude.ai the viewer confirms each save; it takes .json, which the playground's Open levels… reads too
+    const dl = await window.claude.use('downloads').catch(() => null);
+    if (dl) {
+      try { await dl.save({ filename: 'maze-levels.json', data: jsonText() }); return saved('maze-levels.json'); }
+      catch (err) { if (err?.code === 'declined') return; }
+    }
+    return showText();
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([fileText()], { type: 'text/javascript' }));
+  a.download = 'maze-levels.js'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  saved('maze-levels.js');
+  note('<b>Downloaded maze-levels.js.</b> Move it next to schrodinger-playground.html, replacing the old one.');
+}
+$('saveBtn').onclick = save;
+function showText() {
+  $('textOut').value = fileText(); $('textModal').hidden = false; $('textOut').focus(); $('textOut').select();
+}
+$('textBtn').onclick = showText;
+$('closeText').onclick = () => { $('textModal').hidden = true; };
+$('copyBtn').onclick = () => {
+  const t = $('textOut');
+  navigator.clipboard?.writeText(t.value).then(() => { $('copyBtn').textContent = 'Copied'; }, () => { t.select(); })
+    ?? t.select();
+};
+
+// ---------- keys ----------
+window.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  const k = e.key.toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && k === 's') { e.preventDefault(); save(); return; }
+  if ((e.metaKey || e.ctrlKey) && k === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && k === 'y' && !typing) { e.preventDefault(); redo(); return; }
+  if (typing || e.metaKey || e.ctrlKey || !$('textModal').hidden) { if (e.key === 'Escape') $('textModal').hidden = true; return; }
+  const toolKey = { v: 'select', w: 'wall', m: 'mirror', b: 'splitter', g: 'grating', p: 'phase' }[k];
+  const step = e.shiftKey ? 0.05 : 0.005;
+  if (toolKey) setTool(toolKey);
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
+  else if (e.key === 'Escape') { setTool('select'); sel = null; renderSel(); drawOverlay(); }
+  else if (e.key === ' ') { e.preventDefault(); $('fireBtn').click(); }
+  else if (k === 't') testLevel();
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-step, 0); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(step, 0); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(0, step); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(0, -step); }
+  else if ((e.key === '[' || e.key === ']') && sel?.kind === 'part') {
+    const p = L().parts[sel.i];
+    setP(p, 'angle', snapAngle(getP(p, 'angle') + (e.key === '[' ? 5 : -5), 180)); changed(true);
+  }
+});
+window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+
+// ---------- start ----------
+record();
+renderAll();
+connect();
+})();
+</script>
+</body>
+</html>

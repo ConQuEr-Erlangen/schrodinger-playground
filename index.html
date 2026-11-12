@@ -1,0 +1,1795 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta charset="utf-8">
+<title>Schrödinger Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed WebGL field; one translucent instrument panel docked top-right; hint line bottom-left. Single dark look by choice. */
+:root {
+  --void: #04050a;
+  --panel: rgba(11, 13, 20, 0.84);
+  --line: rgba(196, 206, 236, 0.13);
+  --ink: #e7eaf3;
+  --muted: #8d95aa;
+  --accent: #a9c2ff;
+  --track: rgba(196, 206, 236, 0.18);
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; background: var(--void); color: var(--ink);
+  font: 13px/1.4 var(--font-body);
+  -webkit-user-select: none; user-select: none;
+}
+#sim { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+
+.panel {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: 280px; max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; width: 100%;
+}
+.panel-head h1 { margin: 0; font: 400 22px/1 var(--font-display); letter-spacing: 0.005em; flex: 1; }
+.panel-head h1 i { font-style: italic; color: var(--accent); }
+.panel-head .chev { color: var(--muted); font-size: 11px; transition: transform 0.2s; }
+.panel.collapsed .chev { transform: rotate(-90deg); }
+.panel.collapsed .panel-body { display: none; }
+.panel-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 14px; }
+.panel-body::-webkit-scrollbar { width: 6px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+
+.legend { display: grid; grid-template-columns: 76px 1fr; gap: 12px; align-items: center; padding-top: 2px; }
+.legend canvas { width: 76px; height: 76px; display: block; }
+.legend dl { margin: 0; display: grid; gap: 6px; font-size: 12px; }
+.legend dt { font: 500 10px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.legend dd { margin: 2px 0 0; }
+.readout { font: 11px/1.5 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.readout b { color: var(--ink); font-weight: 500; }
+
+.group { display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--line); padding-top: 12px; }
+.group h2 { margin: 0; font: 500 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.ctl { display: flex; flex-direction: column; gap: 4px; }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; }
+.ctl output { font: 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctl.inline { flex-direction: row; align-items: center; justify-content: space-between; }
+
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: none; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 3px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--track) var(--fill, 50%)); border-radius: 2px; }
+input[type=range]::-moz-range-track { height: 3px; background: var(--track); border-radius: 2px; }
+input[type=range]::-moz-range-progress { height: 3px; background: var(--accent); border-radius: 2px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px; border-radius: 50%; background: var(--ink); border: 0; }
+input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: var(--ink); border: 0; }
+
+select {
+  width: 100%; font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+}
+select option { background: #151821; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 6px 0; cursor: pointer; box-shadow: 0 0 0 0.5px var(--line); }
+.seg button[aria-pressed=true] { color: var(--void); background: var(--accent); font-weight: 500; }
+
+.switch { position: relative; width: 30px; height: 17px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 9px; background: var(--track); transition: background 0.15s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--ink); transition: transform 0.15s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(13px); background: var(--void); }
+
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.btn {
+  font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 6px;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.1); }
+.btn kbd { font: 10px var(--font-mono); color: var(--muted); }
+#a-reverse, #a-picture, #a-h3d { grid-column: span 2; }
+.note { margin: 0; font-size: 12px; color: var(--muted); text-wrap: pretty; }
+.note em { font-style: normal; color: var(--ink); }
+.credits { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.credits a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--track); text-underline-offset: 2px; }
+.credits a:hover { text-decoration-color: var(--accent); }
+
+button:focus-visible, select:focus-visible, input:focus-visible + span, input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.hint {
+  position: fixed;
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  margin: 0; font: 12px/1.5 var(--font-mono); color: var(--muted); pointer-events: none;
+  text-shadow: 0 1px 6px #000; transition: opacity 1.2s;
+}
+.hint.dim { opacity: 0.35; }
+.score {
+  position: fixed; left: 50%; top: calc(52px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  font: 400 34px/1 var(--font-display); color: var(--ink); white-space: pre; pointer-events: none;
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 10px #000;
+}
+.toast {
+  position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  font: 12px var(--font-mono); color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  padding: 6px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+.fail { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+#ov { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; mix-blend-mode: screen; }
+.knob {
+  position: fixed; z-index: 3; width: 220px; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+}
+.knob h3 { margin: 0; font: 500 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+body.embed .panel, body.embed .hint { display: none; }
+@media (max-width: 640px) { .panel { width: 260px; } .hint { font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .hint, .toast, .switch span, .switch span::after, .panel-head .chev { transition: none; } }
+</style>
+
+<canvas id="sim"></canvas>
+<canvas id="ov" aria-hidden="true"></canvas>
+
+<aside class="panel" id="panel">
+  <button class="panel-head" id="panelToggle" aria-expanded="true" aria-controls="panelBody">
+    <h1><i>ψ</i> Schrödinger</h1><span class="chev" aria-hidden="true">▼</span>
+  </button>
+  <div class="panel-body" id="panelBody">
+    <div class="legend">
+      <canvas id="wheel" width="152" height="152" aria-label="Colour key: hue is the phase of psi, brightness its amplitude"></canvas>
+      <dl>
+        <div><dt>Hue</dt><dd>phase arg ψ</dd></div>
+        <div><dt>Brightness</dt><dd>amplitude |ψ|</dd></div>
+        <div class="readout">t = <b id="clock">0</b><br><span title="lattice units">ħ = m = Δx = 1</span></div>
+      </dl>
+    </div>
+    <div class="btns" id="actions"></div>
+    <div id="groups"></div>
+    <p class="credits">Created by <a href="https://www.conquerlangen.de/team" target="_blank" rel="noopener">Daniel Burgarth</a> using Claude, the Schrödinger equation, and Pavel Dobryakov's amazing <a href="https://github.com/PavelDoGreat/WebGL-Fluid-Simulation" target="_blank" rel="noopener">WebGL-Fluid-Simulation</a>. Inspired by Bernd Thaller's visual quantum mechanics books.</p>
+  </div>
+</aside>
+
+<p class="hint" id="hint"></p>
+<div class="toast" id="toast" role="status"></div>
+<div class="score" id="score" hidden aria-label="Score, left and right"></div>
+
+<script src="maze-levels.js"></script>
+<script>
+'use strict';
+(() => {
+const canvas = document.getElementById('sim');
+// #embed: the level editor drives this page through postMessage; only the board shows
+const EMBED = location.hash === '#embed' || new URLSearchParams(location.search).has('embed');
+if (EMBED) document.body.classList.add('embed');
+const gl = canvas.getContext('webgl2', { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+function fail(msg) {
+  const d = document.createElement('div'); d.className = 'fail'; d.textContent = msg; document.body.appendChild(d);
+}
+if (!gl) { fail('This simulation needs WebGL 2, which this browser does not offer.'); return; }
+
+// ---------- formats ----------
+gl.getExtension('EXT_color_buffer_float');
+gl.getExtension('EXT_color_buffer_half_float');
+function canRender(internal, type) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, 4, 4, 0, gl.RGBA, type, null);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(f); gl.deleteTexture(t);
+  return ok;
+}
+const F32 = canRender(gl.RGBA32F, gl.FLOAT), F16 = canRender(gl.RGBA16F, gl.HALF_FLOAT);
+const SIMFMT = F32 ? { internal: gl.RGBA32F, type: gl.FLOAT } : F16 ? { internal: gl.RGBA16F, type: gl.HALF_FLOAT } : null;
+const FXFMT = F16 ? { internal: gl.RGBA16F, type: gl.HALF_FLOAT } : { internal: gl.RGBA8, type: gl.UNSIGNED_BYTE };
+if (!SIMFMT) { fail('This GPU cannot render to floating-point textures, which the simulation needs.'); return; }
+
+// ---------- physics constants (lattice units: ħ = m = Δx = 1) ----------
+const DT = 0.2;       // time per step: one leapfrog step, or two field steps of DT/2; stable while DT·max(16/3 + Vmax, −Vmin) < 2
+const VMAX = 3.5;
+// Coulomb centres V = −Z/√(r² + a²): softened over one cell, and kept above −VMIN so the leapfrog stays stable
+const COULOMB_A = 1, VMIN = 8;
+// ping-pong paddles: below the 1D band top 8/3, so a paddle swept over ψ does not trap it
+const PAD_V = 2.5, PAD_HALF = 0.1, PAD_SPEED = 0.7;   // height, half length (fraction of H), cells per unit time
+// The maze always runs on the same grid: a board 1.6 × MAZE_BOARD cells inside an absorbing margin, shown letterboxed,
+// so a level plays the same on every screen and the editor's tests match what players get
+const MAZE_BOARD = 512, MAZE_MARGIN = 48;
+const MAZE_GRID = [Math.ceil(1.6 * MAZE_BOARD) + 2 * MAZE_MARGIN, MAZE_BOARD + 2 * MAZE_MARGIN];
+
+// ---------- shaders ----------
+const VS = `#version 300 es
+layout(location = 0) in vec2 aPos;
+out vec2 vUv;
+void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const HEAD = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+in vec2 vUv;
+out vec4 o;
+`;
+
+// Rounded-rectangle paddles, added to V on the fly so they can move every step
+const PADDLE = `
+uniform vec4 uPad;     // paddle centres in cells: left y, right y, left x, right x
+uniform vec3 uPadDim;  // half thickness, half length, height (0 = no paddles)
+float paddleMask(vec2 q) {
+  if (uPadDim.z == 0.0) return 0.0;
+  float r = uPadDim.x, m = 0.0;
+  for (int i = 0; i < 2; i++) {
+    vec2 d = abs(q - (i == 0 ? uPad.zx : uPad.wy)) - uPadDim.xy + r;
+    float sd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r;
+    m = max(m, 1.0 - smoothstep(-0.75, 0.75, sd));
+  }
+  return m;
+}`;
+
+// Visscher staggered leapfrog: R(t+dt) = R + dt·H I,  I(t+3dt/2) = I − dt·H R,  H = −½∇² + V
+const STEP_LF_FS = HEAD + `
+uniform sampler2D uState;
+uniform sampler2D uPot;
+uniform ivec2 uSize;
+uniform int uBoundary;   // 0 absorbing, 1 hard wall, 2 periodic, 3 absorbing left/right only
+uniform int uPart;       // 0 update R, 1 update I, 2 reverse time, 3 / 4 stagger / unstagger I by dt/2
+uniform float uDt;
+uniform float uFade;
+uniform float uAbsW;
+uniform float uAbsG;
+uniform vec3 uDet;       // maze detector: centre and radius in cells (radius 0 = none)
+${PADDLE}
+vec2 at(ivec2 p) {
+  if (uBoundary == 2) return texelFetch(uState, (p + uSize) % uSize, 0).xy;
+  if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, uSize))) return vec2(0.0);
+  return texelFetch(uState, p, 0).xy;
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec2 c = texelFetch(uState, p, 0).xy;
+  float V = texelFetch(uPot, p, 0).x;
+  float pm = paddleMask(vec2(p) + 0.5);
+  if (pm > 0.0) V = max(V, pm * uPadDim.z);
+  // 4th-order stencil: dispersion error O(k⁶) rather than O(k⁴), so fast packets keep their shape
+  vec2 n1 = at(p + ivec2(1, 0)) + at(p - ivec2(1, 0)) + at(p + ivec2(0, 1)) + at(p - ivec2(0, 1));
+  vec2 n2 = at(p + ivec2(2, 0)) + at(p - ivec2(2, 0)) + at(p + ivec2(0, 2)) + at(p - ivec2(0, 2));
+  vec2 lap = (16.0 * n1 - n2 - 60.0 * c) / 12.0;
+  // Reversal: the state holds R(t) and I(t + dt/2). Undoing the last I update gives I(t − dt/2), and
+  // (R(t), −I(t − dt/2)) is the conjugate wave, which the leapfrog then runs back along the same steps.
+  if (uPart == 2) { o = vec4(c.x, -(c.y + uDt * (-0.5 * lap.x + V * c.x)), 0.0, 1.0); return; }
+  // Handing over: the field solver holds ψ(t), the leapfrog I half a step ahead, I(t + dt/2) ≈ I(t) − ½dt·HR
+  if (uPart >= 3) { o = vec4(c.x, c.y + (uPart == 3 ? -0.5 : 0.5) * uDt * (-0.5 * lap.x + V * c.x), 0.0, 1.0); return; }
+  if (uPart == 0) c.x += uDt * (-0.5 * lap.y + V * c.y);
+  else            c.y -= uDt * (-0.5 * lap.x + V * c.x);
+  float g = uFade;
+  if (uBoundary == 0 || uBoundary == 3) {
+    int dx = min(p.x, uSize.x - 1 - p.x);
+    float d = float(uBoundary == 3 ? dx : min(dx, min(p.y, uSize.y - 1 - p.y)));
+    float s = clamp(1.0 - d / uAbsW, 0.0, 1.0);
+    g += uAbsG * s * s;
+  }
+  if (uDet.z > 0.0) {
+    float s = clamp(1.0 - length(vec2(p) + 0.5 - uDet.xy) / uDet.z, 0.0, 1.0);
+    g += 0.3 * s * s;
+  }
+  c *= exp(-0.5 * g * uDt);
+  o = vec4(c, 0.0, 1.0);
+}`;
+
+// With a magnetic field: second-order differencing ψ(t+dt) = ψ(t−dt) − 2i·dt·Hψ(t), H = ½(p − A)² + V; the state holds ψ(t) in xy and
+// ψ(t−dt) in zw. A uniform field B enters as a Peierls phase e^(−iθ) on every link, in the symmetric gauge
+// A = ½B ẑ×(r − centre): θ is A at the link's midpoint times its length, so each cell encloses flux B exactly.
+const STEP_B_FS = HEAD + `
+uniform sampler2D uState;
+uniform sampler2D uPot;
+uniform ivec2 uSize;
+uniform int uBoundary;   // 0 absorbing, 1 hard wall, 2 periodic, 3 absorbing left/right only
+uniform int uPart;       // 0 step, 1 rebuild ψ(t−dt) from ψ(t), 2 reverse time
+uniform float uDt;
+uniform float uFade;
+uniform float uAbsW;
+uniform float uAbsG;
+uniform float uB;        // magnetic field, flux per cell
+uniform vec2 uCen;       // gauge centre
+uniform vec3 uDet;       // maze detector: centre and radius in cells (radius 0 = none)
+${PADDLE}
+vec2 at(ivec2 p) {
+  if (uBoundary == 2) return texelFetch(uState, (p + uSize) % uSize, 0).xy;
+  if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, uSize))) return vec2(0.0);
+  return texelFetch(uState, p, 0).xy;
+}
+vec2 hop(ivec2 q, float th) {   // e^(−iθ)·ψ(q)
+  vec2 v = at(q);
+  float c = cos(th), s = sin(th);
+  return vec2(c * v.x + s * v.y, c * v.y - s * v.x);
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 st = texelFetch(uState, p, 0);
+  vec2 c = st.xy, prev = st.zw;
+  float V = texelFetch(uPot, p, 0).x;
+  float pm = paddleMask(vec2(p) + 0.5);
+  if (pm > 0.0) V = max(V, pm * uPadDim.z);
+  vec2 r = vec2(p) + 0.5 - uCen;
+  float tx = -0.5 * uB * r.y, ty = 0.5 * uB * r.x;   // phases of the links to +x and to +y
+  // 4th-order stencil: dispersion error O(k⁶) rather than O(k⁴), so fast packets keep their shape
+  vec2 n1 = hop(p + ivec2(1, 0), tx) + hop(p - ivec2(1, 0), -tx) + hop(p + ivec2(0, 1), ty) + hop(p - ivec2(0, 1), -ty);
+  vec2 n2 = hop(p + ivec2(2, 0), 2.0 * tx) + hop(p - ivec2(2, 0), -2.0 * tx) + hop(p + ivec2(0, 2), 2.0 * ty) + hop(p - ivec2(0, 2), -2.0 * ty);
+  vec2 Hc = -0.5 * (16.0 * n1 - n2 - 60.0 * c) / 12.0 + V * c;
+  if (uPart == 1) { o = vec4(c, c + uDt * vec2(-Hc.y, Hc.x)); return; }   // ψ(t−dt) ≈ ψ + i·dt·Hψ
+  vec2 nxt = prev + 2.0 * uDt * vec2(Hc.y, -Hc.x);
+  // Reversal: the scheme is symmetric in time, so (ψ*(t), ψ*(t+dt)) runs back along the same steps, in the field −B
+  if (uPart == 2) { o = vec4(c.x, -c.y, nxt.x, -nxt.y); return; }
+  float g = uFade;
+  if (uBoundary == 0 || uBoundary == 3) {
+    int dx = min(p.x, uSize.x - 1 - p.x);
+    float d = float(uBoundary == 3 ? dx : min(dx, min(p.y, uSize.y - 1 - p.y)));
+    float s = clamp(1.0 - d / uAbsW, 0.0, 1.0);
+    g += uAbsG * s * s;
+  }
+  if (uDet.z > 0.0) {
+    float s = clamp(1.0 - length(vec2(p) + 0.5 - uDet.xy) / uDet.z, 0.0, 1.0);
+    g += 0.3 * s * s;
+  }
+  float f = exp(-g * uDt);
+  o = vec4(nxt * f, c * f);
+}`;
+
+// Adds (or replaces with) a Gaussian packet A·exp(−½|x/σ|²)·e^{i(k·x + φ)}
+const SPLAT_FS = HEAD + `
+uniform sampler2D uState;
+uniform vec2 uSizeF;
+uniform vec2 uPoint;
+uniform vec2 uSigma;    // x: along uDir, y: across it
+uniform vec2 uDir;
+uniform vec2 uK;
+uniform float uAmp;
+uniform float uPhase;
+uniform int uAlign;
+uniform int uReplace;
+uniform int uWrap;
+uniform float uChirp;   // > 0: converging phase −½β|x|², so the packet focuses before it spreads
+void main() {
+  vec2 c = texelFetch(uState, ivec2(gl_FragCoord.xy), 0).xy;
+  vec2 x = gl_FragCoord.xy - uPoint;
+  if (uWrap == 1) x -= uSizeF * floor(x / uSizeF + 0.5);
+  vec2 q = vec2(dot(x, uDir), dot(x, vec2(-uDir.y, uDir.x))) / uSigma;
+  float env = uAmp * exp(-0.5 * dot(q, q));
+  float ph = dot(uK, x) + uPhase - 0.5 * uChirp * dot(x, x);
+  if (uAlign == 1) {
+    vec2 e = texelFetch(uState, clamp(ivec2(uPoint), ivec2(0), ivec2(uSizeF) - 1), 0).xy;
+    if (length(e) > 0.03) ph += atan(e.y, e.x);
+  }
+  vec2 add = env * vec2(cos(ph), sin(ph));
+  o = vec4(uReplace == 1 ? add : c + add, 0.0, 1.0);
+}`;
+
+// Paints or erases potential along a capsule from uA to uB
+const PAINT_FS = HEAD + `
+uniform sampler2D uPot;
+uniform vec2 uA;
+uniform vec2 uB;
+uniform float uR;
+uniform float uH;
+uniform int uErase;
+void main() {
+  float V = texelFetch(uPot, ivec2(gl_FragCoord.xy), 0).x;
+  vec2 pa = gl_FragCoord.xy - uA, ba = uB - uA;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  float d = length(pa - ba * h);
+  float m = 1.0 - smoothstep(uR - 0.75, uR + 0.75, d);
+  // blend towards the stroke's height, so walls (V₀ > 0) and wells (V₀ < 0) leave each other alone outside the brush
+  V = uErase == 1 ? V * (1.0 - m) : mix(V, uH >= 0.0 ? max(V, uH) : min(V, uH), m);
+  o = vec4(V, 0.0, 0.0, 1.0);
+}`;
+
+// Adds a point charge to the potential everywhere: its 1/r tail reaches across the whole grid
+const COULOMB_FS = HEAD + `
+uniform sampler2D uPot;
+uniform vec2 uC;
+uniform float uZ;
+void main() {
+  float V = texelFetch(uPot, ivec2(gl_FragCoord.xy), 0).x;
+  vec2 d = gl_FragCoord.xy - uC;
+  V = clamp(V - uZ * inversesqrt(dot(d, d) + ${COULOMB_A * COULOMB_A}.0), ${-VMIN}.0, ${VMAX});
+  o = vec4(V, 0.0, 0.0, 1.0);
+}`;
+
+const BILERP = `
+vec4 bilerp(sampler2D t, vec2 size, vec2 uv) {
+  vec2 f = uv * size - 0.5;
+  vec2 i0 = floor(f), fr = f - i0;
+  ivec2 i = ivec2(i0), mx = ivec2(size) - 1;
+  vec4 a = texelFetch(t, clamp(i, ivec2(0), mx), 0);
+  vec4 b = texelFetch(t, clamp(i + ivec2(1, 0), ivec2(0), mx), 0);
+  vec4 c = texelFetch(t, clamp(i + ivec2(0, 1), ivec2(0), mx), 0);
+  vec4 d = texelFetch(t, clamp(i + ivec2(1, 1), ivec2(0), mx), 0);
+  return mix(mix(a, b, fr.x), mix(c, d, fr.x), fr.y);
+}`;
+
+const RESAMPLE_FS = HEAD + BILERP + `
+uniform sampler2D uSrc;
+uniform vec2 uSrcSize;
+void main() { o = bilerp(uSrc, uSrcSize, vUv); }`;
+
+const SHADE = BILERP + `
+uniform sampler2D uState;
+uniform vec2 uSimSize;
+uniform float uExposure;
+uniform float uSat;
+vec3 shade(vec2 psi) {
+  float a = length(psi);
+  float th = atan(psi.y, psi.x);
+  vec3 c = 0.5 + 0.5 * cos(th - vec3(0.0, 2.0943951, 4.1887902));
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  c = clamp(mix(vec3(l), c, uSat), 0.0, 1.0);
+  return c * (1.0 - exp(-uExposure * a));
+}`;
+
+const PREFILTER_FS = HEAD + SHADE + `
+uniform float uThreshold;
+void main() {
+  vec3 c = shade(bilerp(uState, uSimSize, vUv).xy);
+  float br = max(c.r, max(c.g, c.b));
+  float knee = 0.5 * uThreshold + 1e-4;
+  float soft = clamp(br - uThreshold + knee, 0.0, 2.0 * knee);
+  soft = soft * soft / (4.0 * knee);
+  o = vec4(c * max(soft, br - uThreshold) / max(br, 1e-4), 1.0);
+}`;
+
+const DOWN_FS = HEAD + `
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+void main() {
+  vec2 t = uTexel;
+  vec4 s = texture(uSrc, vUv) * 4.0;
+  s += texture(uSrc, vUv - t) + texture(uSrc, vUv + t);
+  s += texture(uSrc, vUv + vec2(t.x, -t.y)) + texture(uSrc, vUv - vec2(t.x, -t.y));
+  o = s / 8.0;
+}`;
+
+const UP_FS = HEAD + `
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+void main() {
+  vec2 t = uTexel;
+  vec4 s = texture(uSrc, vUv + vec2(-2.0 * t.x, 0.0)) + texture(uSrc, vUv + vec2(2.0 * t.x, 0.0));
+  s += texture(uSrc, vUv + vec2(0.0, 2.0 * t.y)) + texture(uSrc, vUv + vec2(0.0, -2.0 * t.y));
+  s += 2.0 * (texture(uSrc, vUv + t) + texture(uSrc, vUv - t) + texture(uSrc, vUv + vec2(t.x, -t.y)) + texture(uSrc, vUv - vec2(t.x, -t.y)));
+  o = s / 12.0;
+}`;
+
+// Square or Kagome lattice of round sites inside a rectangle; sites whose centre lies in the rectangle are kept whole
+const LATTICE = `
+uniform vec4 uRect;     // x0, y0, x1, y1 in cells
+uniform vec2 uOrigin;   // one lattice site, in cells
+uniform float uConst;   // distance between neighbouring sites
+uniform float uAngle;   // lattice rotation, radians
+uniform float uSite;    // site radius (< half the site distance)
+uniform int uShape;     // 0 square, 1 Kagome
+float latticeMask(vec2 p) {
+  vec2 e1 = vec2(cos(uAngle), sin(uAngle)), e2 = vec2(-e1.y, e1.x), q = p - uOrigin;
+  vec2 l = vec2(dot(q, e1), dot(q, e2)), c = uConst * floor(l / uConst + 0.5);
+  if (uShape == 1) {   // Kagome: sites R + {0, a₁/2, a₂/2} with a₁ = (2d, 0), a₂ = (d, √3·d)
+    float d = uConst, h = 1.7320508 * d, best = 1e9;
+    float v = floor(l.y / h), u = floor((l.x - v * d) / (2.0 * d));
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 b = vec2(2.0 * d * (u + float(i)) + d * (v + float(j)), h * (v + float(j)));
+      for (int s = 0; s < 3; s++) {
+        vec2 sc = b + (s == 1 ? vec2(d, 0.0) : s == 2 ? vec2(0.5 * d, 0.5 * h) : vec2(0.0));
+        float dd = length(l - sc);
+        if (dd < best) { best = dd; c = sc; }
+      }
+    }
+  }
+  vec2 cw = uOrigin + c.x * e1 + c.y * e2;
+  if (any(lessThan(cw, uRect.xy)) || any(greaterThan(cw, uRect.zw))) return 0.0;
+  return 1.0 - smoothstep(uSite - 0.75, uSite + 0.75, length(p - cw));
+}`;
+
+const LATTICE_FS = HEAD + LATTICE + `
+uniform sampler2D uPot;
+uniform float uH;
+void main() {
+  float V = texelFetch(uPot, ivec2(gl_FragCoord.xy), 0).x;
+  float m = latticeMask(gl_FragCoord.xy);
+  o = vec4(mix(V, uH >= 0.0 ? max(V, uH) : min(V, uH), m), 0.0, 0.0, 1.0);
+}`;
+
+// |ψ|² summed over 8×8 blocks: a small readback for the game's score and CPU player
+const PROBE_FS = HEAD + `
+uniform sampler2D uState;
+uniform ivec2 uSize;
+void main() {
+  ivec2 b = ivec2(gl_FragCoord.xy) * 8;
+  float s = 0.0;
+  for (int j = 0; j < 8; j++) for (int i = 0; i < 8; i++) {
+    ivec2 p = b + ivec2(i, j);
+    if (p.x < uSize.x && p.y < uSize.y) { vec2 c = texelFetch(uState, p, 0).xy; s += dot(c, c); }
+  }
+  o = vec4(s, 0.0, 0.0, 1.0);
+}`;
+
+const DISPLAY_FS = HEAD + SHADE + `
+uniform sampler2D uPot;
+uniform sampler2D uBloom;
+uniform float uBloomI;
+uniform float uShowPot;
+uniform float uVmax;
+uniform vec2 uRes;
+uniform vec3 uMark;
+uniform vec4 uAim;      // drag start and end, in uv
+uniform float uAimFront; // half length of the wavefront, in pixels (0 = hidden)
+uniform float uBoxOn;    // 1 while a lattice rectangle is being dragged out
+${LATTICE}
+${PADDLE}
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a, ba = b - a;
+  return length(pa - ba * clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0));
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec3 col = shade(bilerp(uState, uSimSize, vUv).xy);
+  float vs = clamp(bilerp(uPot, uSimSize, vUv).x / uVmax, -1.0, 1.0), vn = abs(vs);
+  float edge = clamp(fwidth(vs) * 2.5, 0.0, 1.0);
+  vec3 tint = vs < 0.0 ? vec3(0.86, 0.62, 0.42) : vec3(0.6, 0.65, 0.76);   // wells warm, walls cool
+  col = mix(col, tint, uShowPot * clamp(vn * 0.13 + edge * 0.6, 0.0, 0.85));
+  col = mix(col, vec3(0.82, 0.86, 0.95), 0.55 * paddleMask(vUv * uSimSize));   // paddles show even with the potential hidden
+  if (uBoxOn > 0.0) {   // preview: the rectangle's outline and its sites
+    vec2 q = vUv * uSimSize, s = uRes / uSimSize;
+    vec2 d = max(uRect.xy - q, q - uRect.zw) * s;
+    col += vec3(0.72, 0.78, 0.92) * (0.6 * (1.0 - smoothstep(0.6, 1.8, abs(max(d.x, d.y)))) + 0.35 * latticeMask(q));
+  }
+  col += texture(uBloom, vUv).rgb * uBloomI;
+  if (uMark.z > 0.0) {
+    float r = length((vUv - uMark.xy) * uRes);
+    float R = mix(70.0, 8.0, uMark.z);
+    col += vec3(exp(-pow((r - R) / 2.5, 2.0)) * uMark.z);
+  }
+  if (uAimFront > 0.0) {
+    vec2 px = vUv * uRes, a = uAim.xy * uRes, b = uAim.zw * uRes;
+    vec2 d = normalize(b - a + vec2(1e-4, 0.0)), n = vec2(-d.y, d.x);
+    float path = 1.0 - smoothstep(0.8, 2.2, segDist(px, a, b));
+    float front = 1.0 - smoothstep(0.6, 1.8, segDist(px, a - n * uAimFront, a + n * uAimFront));
+    float tip = 1.0 - smoothstep(3.0, 5.0, length(px - b));
+    col += vec3(0.72, 0.78, 0.92) * (0.6 * path + 0.45 * front + 0.6 * tip);
+  }
+  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  o = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const vs = compile(gl.VERTEX_SHADER, VS);
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
+  return { p, u, use() { gl.useProgram(p); return u; } };
+}
+const prog = {
+  step: program(STEP_LF_FS), stepB: program(STEP_B_FS), splat: program(SPLAT_FS), paint: program(PAINT_FS), resample: program(RESAMPLE_FS),
+  prefilter: program(PREFILTER_FS), down: program(DOWN_FS), up: program(UP_FS), display: program(DISPLAY_FS), probe: program(PROBE_FS),
+  lattice: program(LATTICE_FS), coulomb: program(COULOMB_FS),
+};
+
+gl.bindVertexArray(gl.createVertexArray());
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+// ---------- render targets ----------
+function target(w, h, fmt, filter, data) {
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, fmt.internal, w, h, 0, gl.RGBA, data ? gl.FLOAT : fmt.type, data || null);
+  const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fbo, w, h };
+}
+function drop(t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+function pingpong(w, h) {
+  let a = target(w, h, SIMFMT, gl.NEAREST), b = target(w, h, SIMFMT, gl.NEAREST);
+  return { w, h, get read() { return a; }, get write() { return b; }, swap() { [a, b] = [b, a]; }, free() { drop(a); drop(b); } };
+}
+function blit(t) {
+  if (t) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.viewport(0, 0, t.w, t.h); }
+  else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(view.x, view.y, view.w, view.h); }
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function bind(unit, tex, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); }
+
+// ---------- parameters ----------
+const small = Math.min(window.innerWidth, window.innerHeight) < 700;
+const params = {
+  preset: EMBED ? 'maze' : 'double', boundary: 'absorb', brush: 'wave',
+  sigma: 14, frontLen: 1, amp: 1, kick: 1, wallH: VMAX, brushW: 4, charge: 6,
+  steps: 20, res: small ? 384 : 512, B: 0, fade: 0, paused: false,
+  exposure: 1.8, sat: 1, showPot: true, bloom: true, bloomI: 0.5, bloomT: 0.3,
+  gratP: 20, slit: 6, latA: 20, latAngle: 0, latShape: 'square',
+  cpu: true, ballW: 28, ballK: 1.55, focus: true, level: 0,
+};
+const BOUNDARY = { absorb: 0, reflect: 1, wrap: 2, goals: 3 };
+
+let state, pot, W = 0, H = 0, simTime = 0;
+let clockT = 0, clockDir = 1;   // the shown clock runs backwards after a time reversal
+let view = { x: 0, y: 0, w: 1, h: 1 };   // where the field is drawn on the canvas, in device pixels
+let bloom = [];
+let mark = { u: 0, v: 0, life: 0 };
+let aim = null;     // wavefront being aimed: drag start (a) and current end (b), in cells
+const queue = [];   // pending GPU edits from pointer and keys
+// ping-pong state; paddle positions are fractions of H so they survive a resize
+const game = {
+  on: false, y: [0.5, 0.5], prev: [0.5, 0.5], target: [null, null], cpuY: null,
+  score: [0, 0], rally: [0, 0], dir: 1, N0: null, prevN: null, served: 0, frame: 0,
+};
+let probeT = null, probeBuf = null;
+
+function simDims() {
+  if (params.preset === 'maze') return MAZE_GRID;
+  const aspect = canvas.width / canvas.height, r = params.res, maxT = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  const d = aspect >= 1 ? [Math.round(r * aspect), r] : [r, Math.round(r / aspect)];
+  return [Math.min(d[0], maxT), Math.min(d[1], maxT)];
+}
+const scale = () => Math.min(W, H) / 512;
+const frontSigma = () => params.frontLen * Math.min(W, H) / 4;   // ±2σ spans the chosen length
+const absWidth = () => params.preset === 'maze' ? MAZE_MARGIN : Math.max(12, 0.09 * Math.min(W, H));
+function fitView() {   // the whole canvas, or the maze grid's shape centred in it
+  const cw = canvas.width, ch = canvas.height, k = maze.on ? Math.min(cw / W, ch / H) : 0;
+  view = k ? { w: Math.round(W * k), h: Math.round(H * k) } : { w: cw, h: ch };
+  view.x = Math.round((cw - view.w) / 2); view.y = Math.round((ch - view.h) / 2);
+}
+
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (w === canvas.width && h === canvas.height) return false;
+  canvas.width = w; canvas.height = h;
+  return true;
+}
+function initBloom() {
+  bloom.forEach(drop); bloom = [];
+  let w = canvas.width >> 1, h = canvas.height >> 1;
+  for (let i = 0; i < 6 && w >= 4 && h >= 4; i++) { bloom.push(target(w, h, FXFMT, gl.LINEAR)); w >>= 1; h >>= 1; }
+}
+function allocSim(w, h) {
+  const ns = pingpong(w, h), np = pingpong(w, h), carried = !!state;
+  if (state) {   // carry the field over when the window changes shape
+    const u = prog.resample.use();
+    for (const [src, dst] of [[state, ns], [pot, np]]) {
+      bind(0, src.read.tex, u.uSrc); gl.uniform2f(u.uSrcSize, src.w, src.h); blit(dst.read);
+    }
+    state.free(); pot.free();
+  }
+  state = ns; pot = np; W = w; H = h;
+  if (carried) seedPrev();
+  if (probeT) drop(probeT);
+  probeT = target(Math.ceil(w / 8), Math.ceil(h / 8), SIMFMT, gl.NEAREST);
+  probeBuf = new Float32Array(probeT.w * probeT.h * 4);
+  for (const k of ['sigma', 'frontLen', 'brushW', 'gratP', 'slit', 'latA', 'ballW']) controls[k]?.sync();
+  if (game.on) ballNote();
+}
+
+// ---------- GPU operations ----------
+function splat(s) {
+  const u = prog.splat.use();
+  bind(0, state.read.tex, u.uState);
+  gl.uniform2f(u.uSizeF, W, H);
+  gl.uniform2f(u.uPoint, s.x, s.y);
+  gl.uniform2f(u.uSigma, s.sx, s.sy ?? s.sx);
+  gl.uniform2f(u.uDir, ...(s.dir || [1, 0]));
+  // canonical momentum = kinetic + A(launch point), so the packet starts with the velocity asked for
+  gl.uniform2f(u.uK, (s.kx || 0) - 0.5 * params.B * (s.y - H / 2), (s.ky || 0) + 0.5 * params.B * (s.x - W / 2));
+  gl.uniform1f(u.uAmp, s.amp ?? params.amp);
+  gl.uniform1f(u.uPhase, s.phase || 0);
+  gl.uniform1i(u.uAlign, s.align ? 1 : 0);
+  gl.uniform1i(u.uReplace, s.replace ? 1 : 0);
+  gl.uniform1i(u.uWrap, params.boundary === 'wrap' ? 1 : 0);
+  gl.uniform1f(u.uChirp, s.chirp || 0);
+  blit(state.write); state.swap();
+  seedPrev();
+}
+function paintCapsule(a, b, r, h, erase) {
+  const u = prog.paint.use();
+  bind(0, pot.read.tex, u.uPot);
+  gl.uniform2f(u.uA, a.x, a.y); gl.uniform2f(u.uB, b.x, b.y);
+  gl.uniform1f(u.uR, r);
+  gl.uniform1f(u.uH, h);
+  gl.uniform1i(u.uErase, erase ? 1 : 0);
+  blit(pot.write); pot.swap();
+}
+function paint(a, b, erase) { paintCapsule(a, b, params.brushW * scale(), params.wallH, erase); }
+// A grating along the straight line a → b: bars repeating with period P, clear slits between their rounded ends
+function paintGrating(a, b) {
+  const S = scale(), len = Math.hypot(b.x - a.x, b.y - a.y), P = params.gratP * S;
+  const bar = Math.max(0, P - params.slit * S - 2 * params.brushW * S);
+  const at = s => { const t = len > 0 ? s / len : 0; return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; };
+  for (let s = 0; s <= len; s += P) paint(at(s), at(Math.min(len, s + bar)), false);
+}
+function addCharge(c, Z) {
+  const u = prog.coulomb.use();
+  bind(0, pot.read.tex, u.uPot);
+  gl.uniform2f(u.uC, c.x, c.y);
+  gl.uniform1f(u.uZ, Z);
+  blit(pot.write); pot.swap();
+}
+function latticeUniforms(u, a, b) {   // a: press point, which is also a lattice site; b: opposite corner
+  const S = scale(), c = params.latA * S;
+  gl.uniform4f(u.uRect, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y));
+  gl.uniform2f(u.uOrigin, a.x, a.y);
+  gl.uniform1f(u.uConst, c);
+  gl.uniform1f(u.uAngle, params.latAngle * Math.PI / 180);
+  gl.uniform1f(u.uSite, Math.min(params.brushW * S, 0.45 * c));
+  gl.uniform1i(u.uShape, params.latShape === 'kagome' ? 1 : 0);
+}
+function paintLattice(a, b) {
+  const u = prog.lattice.use();
+  bind(0, pot.read.tex, u.uPot);
+  latticeUniforms(u, a, b);
+  gl.uniform1f(u.uH, params.wallH);
+  blit(pot.write); pot.swap();
+}
+function padCentre(i) { const x = absWidth() + 14 * scale(); return { x: i ? W - x : x, y: game.y[i] * H }; }
+function clearTarget(t) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.viewport(0, 0, t.w, t.h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+function clearWave() { clearTarget(state.read); clearTarget(state.write); }
+function clearWalls() { clearTarget(pot.read); clearTarget(pot.write); }
+
+function stepUniforms(u, dt) {
+  bind(1, pot.read.tex, u.uPot);
+  gl.uniform2i(u.uSize, W, H);
+  gl.uniform1i(u.uBoundary, BOUNDARY[params.boundary]);
+  gl.uniform1f(u.uDt, dt);
+  gl.uniform1f(u.uFade, params.fade * 0.004);
+  gl.uniform1f(u.uAbsW, absWidth());
+  gl.uniform1f(u.uAbsG, 0.15);
+  gl.uniform1f(u.uB, params.B);
+  gl.uniform2f(u.uCen, W / 2, H / 2);
+  const md = maze.on ? mazeGeom().det : null;
+  gl.uniform3f(u.uDet, md ? md.x : 0, md ? md.y : 0, md ? md.r : 0);
+}
+// Two solvers share the state. Without a field the Visscher leapfrog runs, as it always has: xy = (R(t), I(t + dt/2)).
+// With B ≠ 0 the Peierls scheme runs instead, two steps of DT/2 per step: xy = ψ(t), zw = ψ(t − DT/2).
+let fieldSolver = false;
+function runPart(p, part, dt) {
+  const u = p.use();
+  stepUniforms(u, dt);
+  gl.uniform1i(u.uPart, part);
+  padUniforms(u, 1);
+  bind(0, state.read.tex, u.uState);
+  blit(state.write); state.swap();
+}
+function syncSolver() {   // hand the running state over when the field is switched on or off
+  const want = params.B !== 0;
+  if (want === fieldSolver) return;
+  if (want) { runPart(prog.step, 4, DT); runPart(prog.stepB, 1, DT / 2); }
+  else runPart(prog.step, 3, DT);
+  fieldSolver = want;
+}
+function stepSim() {
+  syncSolver();
+  const sub = fieldSolver ? 2 : 1, n = params.steps * sub, parts = fieldSolver ? [0] : [0, 1];
+  const u = (fieldSolver ? prog.stepB : prog.step).use();
+  stepUniforms(u, DT / sub);
+  for (let i = 0; i < n; i++) {
+    padUniforms(u, (i + 1) / n);   // paddles glide between frames rather than jump
+    for (const part of parts) {
+      gl.uniform1i(u.uPart, part);
+      bind(0, state.read.tex, u.uState);
+      blit(state.write); state.swap();
+    }
+  }
+  simTime += params.steps * DT;
+  clockT += clockDir * params.steps * DT;
+}
+// After ψ(t) has been written directly (a packet, a picture): the leapfrog takes it as it is, as it always has;
+// the field solver rebuilds ψ(t − dt) to match.
+function seedPrev() {
+  fieldSolver = params.B !== 0;
+  if (fieldSolver) runPart(prog.stepB, 1, DT / 2);
+}
+function reverseTime() {   // ψ → ψ*, exactly as the solver sees it, so everything retraces its path; a field must flip too
+  syncSolver();
+  if (fieldSolver) { runPart(prog.stepB, 2, DT / 2); setParam('B', -params.B); }
+  else runPart(prog.step, 2, DT);
+  clockDir = -clockDir;
+  toast(clockDir < 0 ? (params.B ? 'Time reversed: ψ → ψ*, B → −B' : 'Time reversed: ψ → ψ*') : 'Time runs forward again');
+}
+function padUniforms(u, f) {   // f: 0 … 1 from last frame's paddle positions to this frame's
+  const S = scale(), x = padCentre(0).x, y = i => (game.prev[i] + (game.y[i] - game.prev[i]) * f) * H;
+  gl.uniform4f(u.uPad, y(0), y(1), x, W - x);
+  gl.uniform3f(u.uPadDim, 4 * S, PAD_HALF * H, game.on ? PAD_V : 0);
+}
+
+function render() {
+  const fieldUniforms = (u) => {
+    bind(0, state.read.tex, u.uState);
+    gl.uniform2f(u.uSimSize, W, H);
+    gl.uniform1f(u.uExposure, params.exposure);
+    gl.uniform1f(u.uSat, params.sat);
+  };
+  const useBloom = params.bloom && bloom.length > 1;
+  if (useBloom) {
+    let u = prog.prefilter.use(); fieldUniforms(u); gl.uniform1f(u.uThreshold, params.bloomT); blit(bloom[0]);
+    u = prog.down.use();
+    for (let i = 1; i < bloom.length; i++) {
+      bind(0, bloom[i - 1].tex, u.uSrc); gl.uniform2f(u.uTexel, 1 / bloom[i - 1].w, 1 / bloom[i - 1].h); blit(bloom[i]);
+    }
+    u = prog.up.use(); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    for (let i = bloom.length - 2; i >= 0; i--) {
+      bind(0, bloom[i + 1].tex, u.uSrc); gl.uniform2f(u.uTexel, 1 / bloom[i + 1].w, 1 / bloom[i + 1].h); blit(bloom[i]);
+    }
+    gl.disable(gl.BLEND);
+  }
+  if (view.w < canvas.width || view.h < canvas.height) {   // letterbox bars around the maze
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0.016, 0.02, 0.04, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  const u = prog.display.use(); fieldUniforms(u);
+  bind(1, pot.read.tex, u.uPot);
+  bind(2, bloom[0].tex, u.uBloom);
+  gl.uniform1f(u.uBloomI, useBloom ? params.bloomI : 0);
+  gl.uniform1f(u.uShowPot, params.showPot ? 1 : 0);
+  gl.uniform1f(u.uVmax, params.preset === 'kagome' ? 0.5 : VMAX);   // the shallow Kagome wells would not show on the wall scale
+  gl.uniform2f(u.uRes, view.w, view.h);
+  gl.uniform3f(u.uMark, mark.u, mark.v, mark.life);
+  gl.uniform4f(u.uAim, aim ? aim.ax / W : 0, aim ? aim.ay / H : 0, aim ? aim.bx / W : 0, aim ? aim.by / H : 0);
+  gl.uniform1f(u.uAimFront, aim && !aim.rect ? (aim.line ? 0.01 : 2 * frontSigma() * view.w / W) : 0);   // a grating previews as a bare line
+  gl.uniform1f(u.uBoxOn, aim?.rect ? 1 : 0);
+  if (aim?.rect) latticeUniforms(u, { x: aim.ax, y: aim.ay }, { x: aim.bx, y: aim.by });
+  padUniforms(u, 1);
+  blit(null);
+}
+
+// ---------- scenes ----------
+// Kagome wells: one bound state each (√(2V₀)·r < 2.405), and close enough that the wave hops in a few seconds
+const KAGOME = { d: 14, r: 4, V0: 0.15, sigma: 3 };
+const PRESETS = {
+  free:     { label: 'Empty box', boundary: 'reflect', note: 'A box with hard walls. Packets bounce, spread and interfere with their own reflections.' },
+  double:   { label: 'Double slit', boundary: 'absorb', note: 'A broad packet meets two slits. Past the wall, the two diffracted waves overlap into <em>fringes</em>.' },
+  single:   { label: 'Single slit', boundary: 'absorb', note: 'One narrow slit. The narrower the opening, the wider the diffracted fan.' },
+  tunnel:   { label: 'Tunnelling barrier', boundary: 'absorb', note: 'Packet energy ≈ <em>0.28</em>, barrier height <em>0.36</em>. Classically nothing passes; the faint packet on the far side has tunnelled.' },
+  harmonic: { label: 'Harmonic trap', boundary: 'reflect', note: 'V = ½ω²r². A displaced ground state is a <em>coherent state</em>: it circles the trap without spreading.' },
+  crystal:  { label: 'Crystal', boundary: 'absorb', note: 'A square lattice of hard disks. The transmitted beam splits into Bragg <em>diffraction orders</em>.' },
+  rutherford: { label: 'Rutherford scattering', boundary: 'absorb', note: 'A front meets a repulsive charge, V = Z/r. Classically no path enters the parabola behind it; the wave seeps in, with fringes along its edge.' },
+  kepler:   { label: 'Coulomb orbit', boundary: 'absorb', note: 'A packet on a Kepler ellipse around an attractive charge, V = −Z/r. The fast part near the centre pulls ahead, and the packet smears around the orbit.' },
+  kagome:   { label: 'Kagome lattice', boundary: 'absorb', note: 'One bound state per well; the wave hops between them. Left: six packets round a hexagon with <em>alternating</em> sign. Each neighbour outside receives two opposite contributions that cancel, so it cannot leave: a <em>flat-band</em> state. Right: the same six packets in phase, which spread.' },
+  hall:     { label: 'Quantum Hall edge', boundary: 'reflect', B: 0.02, note: 'A uniform magnetic field B out of the screen. Inside, a packet circles on the spot (a <em>cyclotron orbit</em>). At a wall it can only skip <em>one way</em>: launched along the floor or straight at it, it goes right, round the bump and round the corners. Flip B, or reverse time, and the edge runs the other way.' },
+  stadium:  { label: 'Stadium billiard', boundary: 'reflect', note: 'Bunimovich stadium: a chaotic billiard. The wave soon fills it with a speckle of interference.' },
+  maze:     { label: 'Quantum maze', boundary: 'absorb', note: 'Set the parts so the packet from the gold arrow reaches the teal detector. The packet spreads and diffracts on the way, so only part of it arrives: catch enough to beat the target.' },
+  pong:     { label: 'Quantum ping pong', boundary: 'goals', note: 'The ball is a wave packet, and it spreads as it flies, so a paddle rarely catches all of it. Whatever probability slips past a paddle scores for the other side: points come in <em>fractions</em>.' },
+};
+
+function buildScene(name) {
+  const V = new Float32Array(W * H * 4), S = scale(), m = Math.min(W, H), cx = W / 2, cy = H / 2;
+  const set = (x, y, v) => { V[(y * W + x) * 4] = v; };
+  const L = [];
+  if (name === 'free') {
+    for (let i = 0; i < 4; i++) L.push(randomPacket());
+  } else if (name === 'double' || name === 'single') {
+    const x0 = Math.round(0.34 * W), t = Math.max(3, Math.round(4 * S));
+    const slits = name === 'double' ? [cy - 26 * S, cy + 26 * S] : [cy];
+    const half = name === 'double' ? 6 * S : 9 * S;
+    for (let y = 0; y < H; y++) {
+      if (slits.some(s => Math.abs(y + 0.5 - s) < half)) continue;
+      for (let x = x0; x < x0 + t; x++) set(x, y, VMAX);
+    }
+    L.push({ x: 0.13 * W, y: cy, sx: 16 * S, sy: 0.3 * H, kx: 0.75, ky: 0, amp: 1 });
+  } else if (name === 'tunnel') {
+    const x0 = Math.round(0.5 * W);
+    for (let y = 0; y < H; y++) for (let x = x0; x < x0 + 3; x++) set(x, y, 0.36);
+    L.push({ x: 0.24 * W, y: cy, sx: 22 * S, sy: 0.22 * H, kx: 0.75, ky: 0, amp: 1 });
+  } else if (name === 'harmonic') {
+    const w = Math.sqrt(2) / (0.5 * m);   // V = 1 at r = m/2, so orbit momenta stay well resolved on the grid
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      set(x, y, Math.min(2, 0.5 * w * w * (dx * dx + dy * dy)));
+    }
+    const R = 0.2 * m, s0 = 1 / Math.sqrt(w);
+    L.push({ x: cx + R, y: cy, sx: s0, sy: s0, kx: 0, ky: w * R, amp: 1.2 });
+  } else if (name === 'rutherford' || name === 'kepler') {
+    const rep = name === 'rutherford', Z = (rep ? -8 : 20) * S, nx = rep ? 0.6 * W : cx;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = x + 0.5 - nx, dy = y + 0.5 - cy;
+      set(x, y, Math.min(VMAX, Math.max(-VMIN, -Z / Math.sqrt(dx * dx + dy * dy + COULOMB_A * COULOMB_A))));
+    }
+    if (rep) L.push({ x: 0.2 * W, y: cy, sx: 45 * S, sy: 0.35 * H, kx: 0.75, ky: 0, amp: 0.8 });   // a long train, so the shadow builds up
+    else {   // launched at aphelion with 0.85 of the circular speed: an ellipse reaching in to about 0.57 R
+      const R = 0.2 * m, v = 0.85 * Math.sqrt(Z / R);
+      L.push({ x: cx + R, y: cy, sx: 18 * S, kx: 0, ky: v, amp: 1.2 });
+    }
+  } else if (name === 'kagome') {
+    // Corner-sharing triangles: sites R + {0, a₁/2, a₂/2} with a₁ = (2d, 0), a₂ = (d, √3·d), d the site spacing.
+    // A hexagon centre lies at R + (a₁ + a₂)/2; the two rings sit on hexagons 2d·k apart along x.
+    const { d, r, V0, sigma } = KAGOME, h = Math.sqrt(3) * d, k = Math.max(2, Math.round(0.36 * W / (2 * d)));
+    const ring = [cx - k * d, cy], ox = ring[0] - 1.5 * d, oy = ring[1] - h / 2;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const qx = x + 0.5 - ox, qy = y + 0.5 - oy, v = Math.floor(qy / h), u = Math.floor((qx - v * d) / (2 * d));
+      let best = 1e9;
+      for (let j = v - 1; j <= v + 1; j++) for (let i = u - 1; i <= u + 1; i++) {
+        const bx = 2 * d * i + d * j, by = h * j;
+        for (const [sx, sy] of [[0, 0], [d, 0], [d / 2, h / 2]]) best = Math.min(best, Math.hypot(qx - bx - sx, qy - by - sy));
+      }
+      set(x, y, -V0 * (1 - Math.min(1, Math.max(0, (best - r + 0.75) / 1.5))));
+    }
+    for (const [x0, alt] of [[ring[0], true], [ring[0] + 2 * k * d, false]])
+      for (let i = 0; i < 6; i++) L.push({ x: x0 + d * Math.cos(i * Math.PI / 3), y: cy + d * Math.sin(i * Math.PI / 3), sx: sigma, phase: alt && i % 2 ? Math.PI : 0, amp: 1 });
+  } else if (name === 'hall') {
+    // A Hall bar: a rectangle of thin hard walls in mid-screen, with a bump on its lower edge for the edge to go round.
+    // Packets with k = 0.6 circle with radius k/B ≈ 30·S.
+    const x0 = Math.round(0.06 * W), x1 = Math.round(0.72 * W), y0 = Math.round(0.2 * H), y1 = Math.round(0.82 * H), t = Math.round(5 * S);
+    for (let y = y0 - t; y < y1 + t; y++) for (let x = x0 - t; x < x1 + t; x++)
+      if (x < x0 || x >= x1 || y < y0 || y >= y1) set(x, y, VMAX);
+    const R = 0.09 * m, bx = 0.45 * W;
+    for (let y = y0; y < y0 + R + 2; y++) for (let x = Math.floor(bx - R - 2); x < bx + R + 2; x++)
+      set(x, y, Math.max(V[(y * W + x) * 4], VMAX * Math.min(1, Math.max(0, R - Math.hypot(x + 0.5 - bx, y + 0.5 - y0) + 0.5))));
+    const k = 0.6, lB = Math.sqrt(scale() / PRESETS.hall.B), sig = Math.SQRT2 * lB, rc = k * scale() / PRESETS.hall.B;
+    // A packet moving left near the floor sits at the bottom of its clockwise circle, which never meets the wall;
+    // one launched along the wall or straight at it skips to the right.
+    L.push({ x: 0.45 * W, y: 0.6 * H, sx: sig, kx: k, amp: 1.2 });                // bulk: circles on the spot
+    L.push({ x: x0 + 1.5 * rc, y: y0 + 0.5 * rc, sx: sig, kx: k, amp: 1.2 });     // along the wall
+    L.push({ x: x0 + 5 * rc, y: y0 + 0.5 * rc, sx: sig, ky: -k, amp: 1.2 });      // straight at the wall
+  } else if (name === 'crystal') {
+    const a = 20 * S, r = 3.4 * S, x0 = 0.42 * W, x1 = 0.78 * W;
+    for (let y = 0; y < H; y++) for (let x = Math.floor(x0 - r); x < x1 + r; x++) {
+      const lx = Math.min(x1, Math.max(x0, x0 + a * Math.round((x + 0.5 - x0) / a)));
+      const ly = cy + a * Math.round((y + 0.5 - cy) / a);
+      if (Math.hypot(x + 0.5 - lx, y + 0.5 - ly) < r) set(x, y, VMAX);
+    }
+    L.push({ x: 0.16 * W, y: cy, sx: 16 * S, sy: 0.26 * H, kx: 0.8, ky: 0, amp: 1 });
+  } else if (name === 'stadium') {
+    const horiz = W >= H, R = 0.4 * m, len = Math.max(0.12 * m, 0.5 * Math.max(W, H) - R - 0.05 * m);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      if (!horiz) [dx, dy] = [dy, dx];
+      const d = Math.hypot(Math.max(0, Math.abs(dx) - len), dy);
+      set(x, y, VMAX * Math.min(1, Math.max(0, d - R + 0.5)));
+    }
+    const ang = 0.55;
+    L.push({ x: horiz ? cx - 0.5 * len : cx + 0.1 * m, y: horiz ? cy + 0.1 * m : cy - 0.5 * len, sx: 13 * S, kx: 0.85 * Math.cos(ang), ky: 0.85 * Math.sin(ang), amp: 1.2 });
+  }
+  return { V, launches: L };
+}
+
+// ---------- quantum maze ----------
+// Levels come from maze-levels.js beside this page (made with level-editor.html) or from a file the player opens.
+// Board units: a 1.6 × 1 board, v pointing up, MAZE_BOARD cells tall. Parts are line-shaped and turn about
+// their centre; angles are in degrees and snap to 5°.
+const MIRROR_V = PAD_V;   // mirrors stay below the trapping threshold 8/3
+const BS_R = 1.2;         // splitter half-thickness in cells: a fixed thickness keeps its transmission fixed
+const BAR_HALF = 2;       // grating bumps: half-length across the grating line, in cells
+const PART_DEFAULTS = {
+  mirror:   { length: 0.22, v: MIRROR_V },
+  splitter: { length: 0.3, v: 0.35 },
+  grating:  { length: 0.3, period: 10.5, bar: 4.8, v: 0.4 },
+  phase:    { length: 0.2, thick: 0.05, phase: 0 },
+};
+// Settings a level can hand to the player besides turning and sliding: label, default range, step, unit
+const KNOBS = {
+  v:      { label: 'Barrier height', range: [0.1, 1.5], step: 0.05, unit: '' },
+  period: { label: 'Grating period', range: [6, 24], step: 0.5, unit: ' Δx' },
+  bar:    { label: 'Bar width', range: [2, 8], step: 0.5, unit: ' Δx' },
+  phase:  { label: 'Phase shift', range: [-180, 180], step: 15, unit: '°' },
+};
+const TYPE_KNOBS = { mirror: [], splitter: ['v'], grating: ['period', 'bar', 'v'], phase: ['phase'] };
+const KNOB_SYMBOL = { v: 'V', period: 'd', bar: 'w', phase: 'φ' };
+const knobText = (k, x) => (k === 'v' ? x.toFixed(2) : k === 'phase' ? Math.round(x) : +x.toFixed(2)) + KNOBS[k].unit;
+const SOURCE_DEFAULTS = { at: [0.15, 0.5], angle: 0, k: 1.2, width: 0.035 };
+const EMPTY_LEVEL = { name: 'No levels', target: 100, hint: 'No levels loaded: put maze-levels.js next to this page, or choose Open levels.',
+                      detector: { at: [1.45, 0.5] } };
+
+// A level as stored in a file, with defaults filled in. Parts are copies, so playing never changes the file.
+function readLevel(L) {
+  return {
+    name: String(L.name || 'Untitled'), hint: String(L.hint || ''), success: String(L.success || ''), target: +L.target || 50,
+    source: { ...SOURCE_DEFAULTS, ...L.source }, detector: { at: [1.45, 0.5], r: 0.07, ...L.detector },
+    walls: Array.isArray(L.walls) ? L.walls : [],
+    parts: (L.parts || []).filter(p => PART_DEFAULTS[p.type]).map(p => ({ ...PART_DEFAULTS[p.type], angle: 0, ...p, adjust: { ...p.adjust } })),
+  };
+}
+// A level file is JSON, optionally wrapped as `window.MAZE_LEVELS = {…};` so a page opened from disk can load it as a script
+function readLevelFile(text) {
+  const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+  if (!Array.isArray(j.levels) || !j.levels.length) throw new Error('no levels');
+  return j.levels;
+}
+let levelFile = Array.isArray(window.MAZE_LEVELS?.levels) ? window.MAZE_LEVELS.levels : [];
+
+const maze = { on: false, raw: null, level: null, parts: [], flying: false, got: 0, N0: null, prevN: null, fired: 0, frame: 0,
+               dirty: false, solved: false, runId: null, fast: false };
+function boardSize() { const s = MAZE_BOARD; return { x0: (W - 1.6 * s) / 2, y0: (H - s) / 2, s }; }
+function boardCell([u, v]) { const b = boardSize(); return { x: b.x0 + u * b.s, y: b.y0 + v * b.s }; }
+function mazeGeom() {
+  const L = maze.level, s = MAZE_BOARD, src = boardCell(L.source.at), a = L.source.angle * Math.PI / 180;
+  return { s, src: { x: src.x, y: src.y, dx: Math.cos(a), dy: Math.sin(a) }, det: { ...boardCell(L.detector.at), r: L.detector.r * s } };
+}
+function partEnds(p) {
+  const c = boardCell(p.at), h = p.length / 2 * MAZE_BOARD, a = p.angle * Math.PI / 180;
+  return [{ x: c.x - h * Math.cos(a), y: c.y - h * Math.sin(a) }, { x: c.x + h * Math.cos(a), y: c.y + h * Math.sin(a) }];
+}
+// Bars of a grating, one per period along its length
+function gratingBars(p) {
+  const c = boardCell(p.at), a = p.angle * Math.PI / 180, e = { x: Math.cos(a), y: Math.sin(a) }, n = { x: -e.y, y: e.x };
+  const half = p.length / 2 * MAZE_BOARD, bars = [];
+  for (let t = -Math.floor(half / p.period) * p.period; t <= half; t += p.period) {
+    const q = { x: c.x + e.x * t, y: c.y + e.y * t };
+    bars.push({ a: { x: q.x - n.x * BAR_HALF, y: q.y - n.y * BAR_HALF }, b: { x: q.x + n.x * BAR_HALF, y: q.y + n.y * BAR_HALF } });
+  }
+  return bars;
+}
+// Height of a phase plate: a wave of the source's k crossing it head-on falls behind by the plate's phase.
+// From the 4th-order lattice dispersion, V = E(k) − E(k′) with k − k′ = φ / thickness.
+const disp = k => (30 - 32 * Math.cos(k) + 2 * Math.cos(2 * k)) / 24;
+function plateV(p) { const k = maze.level.source.k; return disp(k) - disp(k - p.phase * Math.PI / 180 / (p.thick * MAZE_BOARD)); }
+function buildMaze() {
+  const L = maze.level, s = MAZE_BOARD;
+  clearWalls();
+  for (const [a, b] of L.walls) paintCapsule(boardCell(a), boardCell(b), 0.012 * s, VMAX);
+  for (const p of maze.parts) {
+    if (p.type === 'grating') for (const b of gratingBars(p)) paintCapsule(b.a, b.b, p.bar / 2, p.v);
+    else if (p.type === 'phase') { const V = plateV(p); if (Math.abs(V) > 1e-4) paintCapsule(...partEnds(p), p.thick * s / 2, V); }
+    else paintCapsule(...partEnds(p), p.type === 'splitter' ? BS_R : 0.01 * s, p.v);
+  }
+}
+function showLevel(raw) {
+  maze.raw = raw; maze.level = readLevel(raw); maze.parts = maze.level.parts;
+  Object.assign(maze, { flying: false, got: 0, solved: false, runId: null, fast: false });
+  closeKnob(); clearWave(); buildMaze(); showMaze(); setHint();
+}
+function fire() {
+  const g = mazeGeom(), src = maze.level.source, s = src.width * g.s;   // a focused packet, narrowest after t = s²
+  closeKnob(); clearWave(); setHint();
+  splat({ x: g.src.x, y: g.src.y, sx: s * Math.SQRT2, chirp: 1 / (2 * s * s), kx: src.k * g.src.dx, ky: src.k * g.src.dy, amp: 1 });
+  Object.assign(maze, { flying: true, got: 0, N0: null, prevN: null, fired: simTime, frame: 0, solved: false });
+  showMaze();
+}
+// Probability vanishing inside the detector is caught; whatever reaches the edges is lost.
+function scoreMaze() {
+  const r = probe();
+  if (!r) return;
+  if (maze.N0 == null) { maze.N0 = maze.prevN = r.N; return; }
+  const loss = maze.prevN - r.N, sinks = r.D + r.E;
+  maze.prevN = r.N;
+  if (loss > 0 && sinks > 1e-9 * maze.N0) maze.got += loss / maze.N0 * r.D / sinks;
+  if (maze.runId != null) post({ maze: 'progress', id: maze.runId, got: maze.got });
+  if (r.N < 0.05 * maze.N0 || simTime - maze.fired > 5000) {
+    const L = maze.level, pct = Math.round(100 * maze.got);
+    maze.flying = false; maze.fast = false; maze.solved = 100 * maze.got >= L.target;
+    if (maze.runId == null) toast(maze.solved ? `Solved! ${pct}% reached the detector.` : `${pct}% reached the detector; ${L.target}% needed.`);
+    post({ maze: 'result', id: maze.runId, got: maze.got });
+    maze.runId = null;
+    if (maze.solved && L.success) { hint.textContent = L.success; hint.classList.remove('dim'); }
+  }
+  showMaze();
+}
+function showMaze() {
+  const L = maze.level, A = maze.parts.map(p => p.adjust);
+  scoreEl.textContent = `${Math.round(100 * maze.got)}%  ·  goal ${L.target}%`;
+  const how = [
+    A.some(a => a.angle) && 'drag a part with a gold pivot to turn it',
+    A.some(a => a.slide) && 'drag a gold ring along its track',
+    maze.parts.some(p => knobsOf(p).length) && 'tap a gold label to change that setting',
+    'tap the gold arrow to fire',
+  ].filter(Boolean).join(', ');
+  document.getElementById('levelNote').textContent = maze.solved && L.success ? L.success : `${L.hint} ${how[0].toUpperCase() + how.slice(1)}.`.trim();
+}
+
+// ---------- maze parts the player can set ----------
+const knobsOf = p => TYPE_KNOBS[p.type].filter(k => p.adjust[k]);
+const adjustable = p => Object.values(p.adjust).some(Boolean);
+function segDistJS(p, a, b) {
+  const bx = b.x - a.x, by = b.y - a.y, t = Math.max(0, Math.min(1, ((p.x - a.x) * bx + (p.y - a.y) * by) / Math.max(bx * bx + by * by, 1e-9)));
+  return Math.hypot(p.x - a.x - bx * t, p.y - a.y - by * t);
+}
+function partAt(c, tol) {   // the adjustable part nearest to c (cells), within tol
+  let best = -1, bd = tol;
+  maze.parts.forEach((p, i) => {
+    if (!adjustable(p)) return;
+    const d = segDistJS(c, ...partEnds(p)) - (p.type === 'phase' ? p.thick * MAZE_BOARD / 2 : 0);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+function slideTo(p, c) {   // the point of p's track nearest to c (cells), in steps of 0.005 board units
+  const [a, b] = p.track, du = b[0] - a[0], dv = b[1] - a[1], len = Math.hypot(du, dv);
+  if (!len) return a.slice();
+  const A = boardCell(a), t = ((c.x - A.x) * du + (c.y - A.y) * dv) / MAZE_BOARD / len;
+  const s = Math.max(0, Math.min(len, Math.round(t / 0.005) * 0.005));
+  return [+(a[0] + du / len * s).toFixed(4), +(a[1] + dv / len * s).toFixed(4)];
+}
+function partsChanged(msg) {   // the player changed a part: rebuild, and tell the editor (when framed by it)
+  maze.dirty = true;
+  if (msg) toast(msg);
+  post({ maze: 'parts', parts: maze.parts.map(p => Object.fromEntries(
+    Object.keys(p.adjust).filter(k => p.adjust[k]).map(k => k === 'slide' ? ['at', p.at] : [k, p[k]]))) });
+}
+const knobEl = el('div', 'knob');
+knobEl.hidden = true;
+document.body.appendChild(knobEl);
+function openKnob(i) {
+  const p = maze.parts[i], keys = knobsOf(p);
+  if (!keys.length) { closeKnob(); return; }
+  knobEl.replaceChildren(el('h3', '', { mirror: 'Mirror', splitter: 'Beam splitter', grating: 'Grating', phase: 'Phase plate' }[p.type]));
+  for (const k of keys) {
+    const K = KNOBS[k], [lo, hi] = Array.isArray(p.adjust[k]) ? p.adjust[k] : K.range, row = el('div', 'ctl');
+    row.innerHTML = `<label><span>${K.label}</span><output></output></label><input type="range" min="${lo}" max="${hi}" step="${K.step}" aria-label="${K.label}">`;
+    const inp = row.querySelector('input'), out = row.querySelector('output');
+    const sync = () => { inp.value = p[k]; out.textContent = knobText(k, p[k]); inp.style.setProperty('--fill', (p[k] - lo) / (hi - lo) * 100 + '%'); };
+    inp.addEventListener('input', () => {
+      if (maze.flying) { sync(); toast('The parts are locked while the packet is flying.'); return; }
+      p[k] = +inp.value; sync(); partsChanged();
+    });
+    sync(); knobEl.appendChild(row);
+  }
+  knobEl.hidden = false;
+  const c = cellToCss(boardCell(p.at)), w = knobEl.offsetWidth, h = knobEl.offsetHeight;
+  knobEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, c.x + 28)) + 'px';
+  knobEl.style.top = Math.max(8, Math.min(innerHeight - h - 8, c.y - h / 2)) + 'px';
+}
+function closeKnob() { knobEl.hidden = true; }
+
+// Source, detector and the parts' marks, drawn in 2D over the field (screen-blended, so they glow like the field)
+const ov = document.getElementById('ov'), octx = ov.getContext('2d');
+function drawOverlay() {
+  if (ov.width !== canvas.width || ov.height !== canvas.height) { ov.width = canvas.width; ov.height = canvas.height; }
+  const g = octx, d = canvas.width / Math.max(1, canvas.clientWidth);
+  g.clearRect(0, 0, ov.width, ov.height);
+  if (!maze.on || !maze.level) return;
+  const k = view.w / W, P = c => [view.x + c.x * k, view.y + view.h - c.y * k];
+  const gold = 'rgb(242, 204, 115)', glass = a => `rgba(191, 217, 255, ${a})`;
+  const line = (a, b, w, style, dash = []) => {
+    g.beginPath(); g.setLineDash(dash); g.moveTo(...P(a)); g.lineTo(...P(b));
+    g.lineWidth = w; g.strokeStyle = style; g.stroke();
+  };
+  const ring = (c, r, style, fill) => {
+    g.beginPath(); g.setLineDash([]); g.arc(...P(c), r, 0, 2 * Math.PI);
+    if (fill) { g.fillStyle = style; g.fill(); } else { g.lineWidth = 1.5 * d; g.strokeStyle = style; g.stroke(); }
+  };
+  g.lineCap = 'round';
+  g.font = `500 ${11 * d}px "IBM Plex Mono", ui-monospace, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const p of maze.parts) {
+    const ends = partEnds(p), c = boardCell(p.at), a = p.angle * Math.PI / 180;
+    if (p.adjust.slide && p.track) {
+      const [ta, tb] = p.track.map(boardCell), L = Math.hypot(tb.x - ta.x, tb.y - ta.y) || 1;
+      const n = { x: -(tb.y - ta.y) / L * 5 / k * d, y: (tb.x - ta.x) / L * 5 / k * d };
+      line(ta, tb, 1.5 * d, 'rgba(242, 204, 115, 0.5)', [2 * d, 5 * d]);
+      for (const e of [ta, tb]) line({ x: e.x - n.x, y: e.y - n.y }, { x: e.x + n.x, y: e.y + n.y }, 1.5 * d, 'rgba(242, 204, 115, 0.7)');
+    }
+    if (p.type === 'splitter') line(...ends, 2 * d, glass(0.6), [4 * d, 4 * d]);   // too low to show as a wall: dashed, like half-silvered glass
+    else if (p.type === 'grating') for (const b of gratingBars(p)) line(b.a, b.b, p.bar * k, glass(0.35));
+    else if (p.type === 'phase') line(...ends, p.thick * MAZE_BOARD * k, 'rgba(196, 160, 255, 0.16)');
+    if (p.adjust.angle) ring(c, 3 * d, gold, true);
+    if (p.adjust.slide) ring(c, 6.5 * d, gold);
+    const keys = knobsOf(p), fixed = p.type === 'phase' && !keys.length;
+    if (keys.length || fixed) {   // label just past the part's upper (or right) end, clear of any track across it
+      let ux = Math.cos(a), uy = -Math.sin(a);   // screen direction along the part
+      if (uy > 1e-6 || (Math.abs(uy) <= 1e-6 && ux < 0)) { ux = -ux; uy = -uy; }
+      const [cx, cy] = P(c), r = p.length / 2 * MAZE_BOARD * k + (p.type === 'phase' ? p.thick * MAZE_BOARD * k / 2 : 0) + 8 * d;
+      g.textAlign = ux > 0.5 ? 'left' : ux < -0.5 ? 'right' : 'center';
+      g.textBaseline = uy < -0.5 ? 'bottom' : 'middle';
+      g.fillStyle = fixed ? 'rgba(141, 149, 170, 0.9)' : gold;
+      g.fillText((fixed ? ['phase'] : keys).map(q => `${KNOB_SYMBOL[q]} ${knobText(q, p[q])}`).join('   '), cx + ux * r, cy + uy * r);
+    }
+  }
+  const { src, det } = mazeGeom(), fill = Math.min(1, 100 * maze.got / maze.level.target);
+  g.beginPath(); g.arc(...P(det), det.r * k, 0, 2 * Math.PI);
+  g.fillStyle = `rgba(102, 230, 191, ${0.22 * fill})`; g.fill();
+  g.lineWidth = 1.5 * d; g.strokeStyle = 'rgba(102, 230, 191, 0.8)'; g.setLineDash([]); g.stroke();
+  const tip = { x: src.x + src.dx * 16, y: src.y + src.dy * 16 }, [tx, ty] = P(tip), ang = Math.atan2(-src.dy, src.dx);
+  line(src, tip, 2 * d, gold);
+  g.beginPath(); g.moveTo(tx + Math.cos(ang) * 4 * d, ty + Math.sin(ang) * 4 * d);
+  g.lineTo(tx + Math.cos(ang + 2.4) * 6 * d, ty + Math.sin(ang + 2.4) * 6 * d);
+  g.lineTo(tx + Math.cos(ang - 2.4) * 6 * d, ty + Math.sin(ang - 2.4) * 6 * d);
+  g.fillStyle = gold; g.fill();
+  ring(src, 3.5 * d, gold, true);
+  if (!maze.flying) ring(src, 10 * d, 'rgba(242, 204, 115, 0.45)');
+}
+
+// ---------- level editor link (#embed) ----------
+function post(msg) { if (EMBED && parent !== window) parent.postMessage(msg, '*'); }
+let lastView = '';
+function postView() {   // the board's rectangle in this page's CSS pixels, so the editor can draw over it
+  if (!EMBED || !maze.on) return;
+  const b = boardSize(), a = cellToCss({ x: b.x0, y: b.y0 + b.s }), z = cellToCss({ x: b.x0 + 1.6 * b.s, y: b.y0 });
+  const rect = { x: a.x, y: a.y, w: z.x - a.x, h: z.y - a.y }, key = JSON.stringify(rect);
+  if (key !== lastView) { lastView = key; post({ maze: 'view', rect }); }
+}
+window.addEventListener('message', e => {
+  const m = e.data;
+  if (!EMBED || e.source !== parent || !m || typeof m !== 'object') return;
+  if (m.maze === 'level') queue.push(() => showLevel(m.level));
+  else if (m.maze === 'fire') queue.push(fire);
+  else if (m.maze === 'run') queue.push(() => { showLevel(m.level); fire(); maze.runId = m.id; maze.fast = true; });
+  else if (m.maze === 'stop') queue.push(() => { Object.assign(maze, { flying: false, fast: false, runId: null }); clearWave(); showMaze(); });
+});
+
+function randomPacket() {
+  const S = scale(), a = Math.random() * Math.PI * 2, k = 0.5 + 0.7 * Math.random();
+  return {
+    x: W * (0.15 + 0.7 * Math.random()), y: H * (0.15 + 0.7 * Math.random()),
+    sx: params.sigma * S * (0.8 + 0.5 * Math.random()), kx: k * Math.cos(a), ky: k * Math.sin(a),
+    phase: Math.random() * Math.PI * 2, amp: params.amp,
+  };
+}
+
+function loadPreset() {
+  const p = PRESETS[params.preset], [w, h] = simDims();
+  if (w !== W || h !== H) allocSim(w, h);   // the maze has a grid of its own
+  setParam('boundary', p.boundary);
+  setParam('B', (p.B || 0) / scale());   // B ∝ 1/S keeps the cyclotron radius a fixed share of the screen
+  document.getElementById('presetNote').innerHTML = p.note;
+  const { V, launches } = buildScene(params.preset);
+  gl.bindTexture(gl.TEXTURE_2D, pot.read.tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.FLOAT, V);
+  clearWave();
+  launches.forEach(splat);
+  simTime = 0; clockT = 0; clockDir = 1;
+  game.on = params.preset === 'pong';
+  maze.on = params.preset === 'maze';
+  sections.Maze.hidden = !maze.on;
+  if (maze.on) showLevel(EMBED ? maze.raw || EMPTY_LEVEL : levelFile[params.level] || EMPTY_LEVEL);
+  else closeKnob();
+  game.score = [0, 0]; game.rally = [0, 0]; game.y = [0.5, 0.5]; game.prev = [0.5, 0.5];
+  if (game.on) serve();
+  scoreEl.hidden = !game.on && !maze.on; sections.Game.hidden = !game.on;
+  if (game.on) showScore(); ballNote(); setHint();
+}
+
+// ---------- ping pong ----------
+function serve() {
+  // the probability still on the table is shared out like the rally's points, so every serve is worth exactly one
+  const won = game.rally[0] + game.rally[1];
+  if (won > 0) for (let i = 0; i < 2; i++) game.score[i] += Math.max(0, 1 - won) * game.rally[i] / won;
+  game.rally = [0, 0];
+  showScore();
+  const a = (0.15 + 0.3 * Math.random()) * (Math.random() < 0.5 ? -1 : 1), k = params.ballK;
+  // A focused serve is the packet of width σ run backwards by tf = σ²: it starts √2σ wide, narrows to σ
+  // at tf and is back to √2σ at 2tf, which doubles the time it stays sharp.
+  const s = params.ballW * scale(), tf = params.focus ? s * s : 0;
+  game.dir = -game.dir;
+  clearWave();
+  splat({ x: W / 2, y: H / 2, sx: s * Math.hypot(1, tf / (s * s)), chirp: tf / (s ** 4 + tf * tf),
+          kx: game.dir * k * Math.cos(a), ky: k * Math.sin(a), amp: 1 });
+  game.N0 = game.prevN = null; game.served = simTime;
+}
+// group velocity of the 4th-order lattice dispersion, and how many table crossings the ball stays within √2σ
+const vGroup = k => (32 * Math.sin(k) - 4 * Math.sin(2 * k)) / 24;
+function sharpCrossings() {
+  const s = params.ballW * scale(), D = W - 2 * padCentre(0).x;
+  return (params.focus ? 2 : 1) * s * s * vGroup(params.ballK) / D;
+}
+function probe() {
+  const u = prog.probe.use();
+  bind(0, state.read.tex, u.uState); gl.uniform2i(u.uSize, W, H);
+  blit(probeT);
+  try { gl.readPixels(0, 0, probeT.w, probeT.h, gl.RGBA, gl.FLOAT, probeBuf); } catch (e) { return null; }
+  const pw = probeT.w, ph = probeT.h, strip = absWidth() / 8;
+  let N = 0, L = 0, R = 0, mR = 0, yR = 0, D = 0, E = 0;
+  const det = maze.on ? mazeGeom().det : null, aw = absWidth();
+  for (let j = 0; j < ph; j++) for (let i = 0; i < pw; i++) {
+    const v = probeBuf[(j * pw + i) * 4];
+    N += v;
+    if (i < strip) L += v; else if (i >= pw - strip) R += v;
+    if (i >= pw / 2) { mR += v; yR += v * (j + 0.5) / ph; }
+    const cx = 8 * i + 4, cy = 8 * j + 4;
+    if (det && Math.hypot(cx - det.x, cy - det.y) < det.r + 8) D += v;
+    if (Math.min(cx, cy, W - cx, H - cy) < aw + 4) E += v;
+  }
+  return { N, L, R, mR, yR: mR > 0 ? yR / mR : 0.5, D, E };
+}
+// Probability vanishing into the absorbing strip behind a paddle scores for the other side; one serve is worth one point.
+function scoreGame() {
+  const r = probe();
+  if (!r) return;
+  if (game.N0 == null) { game.N0 = game.prevN = r.N; return; }
+  const loss = game.prevN - r.N, edge = r.L + r.R;
+  game.prevN = r.N;
+  if (loss > 0 && edge > 1e-6 * game.N0) {
+    const toRight = loss / game.N0 * r.L / edge, toLeft = loss / game.N0 * r.R / edge;
+    game.score[1] += toRight; game.rally[1] += toRight;
+    game.score[0] += toLeft; game.rally[0] += toLeft;
+    showScore();
+  }
+  game.cpuY = r.mR > 0.05 * r.N ? r.yR : null;
+  if (r.N < 0.25 * game.N0 || simTime - game.served > 6000) serve();
+}
+const GAME_KEYS = { w: [0, 1], s: [0, -1], ArrowUp: [1, 1], ArrowDown: [1, -1] };
+const held = new Set();
+function movePaddles() {
+  const dtSim = params.paused ? 0 : params.steps * DT;
+  for (let i = 0; i < 2; i++) {
+    game.prev[i] = game.y[i];
+    const cpu = i === 1 && params.cpu, step = PAD_SPEED * dtSim / H * (cpu ? 0.6 : 1);
+    let tgt = game.target[i];
+    if (tgt == null && cpu) tgt = game.cpuY ?? 0.5;
+    let v = 0;
+    if (tgt != null) v = Math.max(-step, Math.min(step, tgt - game.y[i]));
+    else for (const [k, [side, d]] of Object.entries(GAME_KEYS)) if (side === i && held.has(k)) v += d * step;
+    game.y[i] = Math.max(PAD_HALF, Math.min(1 - PAD_HALF, game.y[i] + v));
+  }
+}
+window.addEventListener('keydown', e => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (!game.on || !GAME_KEYS[k] || e.metaKey || e.ctrlKey) return;
+  e.preventDefault();   // keep arrows off a focused slider or select
+  held.add(k);
+}, true);
+window.addEventListener('keyup', e => held.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key), true);
+window.addEventListener('blur', () => held.clear());
+
+// A picture as a wavefunction. The display colours phase θ as ½ + ½cos(θ − 2πk/3) in red, green and blue and
+// |ψ| as brightness 1 − e^(−exposure·|ψ|); inverting both makes ψ look like the picture at first. Grey has no hue,
+// so the less saturated a pixel, the more its phase comes from its brightness instead.
+function quantize(img) {
+  const mx = params.boundary === 'absorb' || params.boundary === 'goals' ? absWidth() + 4 : 4;
+  const my = params.boundary === 'absorb' ? absWidth() + 4 : 4;
+  const k = Math.min((W - 2 * mx) / img.width, (H - 2 * my) / img.height);
+  const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h }), c2 = cv.getContext('2d');
+  c2.imageSmoothingQuality = 'high';
+  c2.drawImage(img, 0, 0, w, h);
+  const px = c2.getImageData(0, 0, w, h).data, E = params.exposure;
+  const psi = new Float32Array(W * H * 4), x0 = Math.round((W - w) / 2), y0 = Math.round((H - h) / 2);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const p = (j * w + i) * 4, r = px[p] / 255, g = px[p + 1] / 255, b = px[p + 2] / 255;
+    const v = Math.max(r, g, b), sat = v > 0 ? (v - Math.min(r, g, b)) / v : 0;
+    const hx = r - 0.5 * (g + b), hy = 0.8660254 * (g - b), hl = Math.hypot(hx, hy) || 1;
+    const lum = 2 * Math.PI * (0.299 * r + 0.587 * g + 0.114 * b);
+    const th = Math.atan2(sat * hy / hl + (1 - sat) * Math.sin(lum), sat * hx / hl + (1 - sat) * Math.cos(lum));
+    const a = -Math.log(1 - 0.97 * v * px[p + 3] / 255) / E;
+    const q = ((y0 + h - 1 - j) * W + x0 + i) * 4;   // picture rows run down, cells up
+    psi[q] = a * Math.cos(th); psi[q + 1] = a * Math.sin(th);
+  }
+  clearWave();
+  gl.bindTexture(gl.TEXTURE_2D, state.read.tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.FLOAT, psi);
+  seedPrev();
+  clockT = 0; clockDir = 1;
+}
+function loadPicture(file) {
+  if (!file) return;
+  createImageBitmap(file).then(img => queue.push(() => { quantize(img); img.close(); }),
+    () => toast('This browser cannot read that file as a picture.'));
+}
+
+function measure() {
+  const buf = new Float32Array(W * H * 4);
+  try {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, state.read.fbo);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, buf);
+  } catch (e) { toast('This GPU cannot read the field back for a measurement.'); return; }
+  let N = 0;
+  for (let i = 0; i < buf.length; i += 4) N += buf[i] * buf[i] + buf[i + 1] * buf[i + 1];
+  if (!(N > 1e-4)) { toast('Nothing to measure: the field is empty.'); return; }
+  let r = Math.random() * N, idx = 0;
+  for (let i = 0; i < buf.length; i += 4) { r -= buf[i] * buf[i] + buf[i + 1] * buf[i + 1]; if (r <= 0) { idx = i >> 2; break; } }
+  const x = (idx % W) + 0.5, y = Math.floor(idx / W) + 0.5, s = 3;
+  splat({ x, y, sx: s, amp: Math.min(Math.sqrt(N / (Math.PI * s * s)), 4), replace: true });
+  mark = { u: x / W, v: y / H, life: 1 };
+  toast(`Position measured at (${Math.round(x)}, ${Math.round(y)}): ψ collapsed`);
+}
+
+// ---------- pointer ----------
+const pointers = new Map();
+function toCells(e) {
+  const r = canvas.getBoundingClientRect(), d = canvas.width / r.width;
+  return { x: ((e.clientX - r.left) * d - view.x) / view.w * W, y: (1 - ((e.clientY - r.top) * d - view.y) / view.h) * H };
+}
+const cssToCells = px => px * canvas.width / canvas.clientWidth * W / view.w;
+function cellToCss(c) {
+  const r = canvas.getBoundingClientRect(), d = canvas.width / r.width;
+  return { x: r.left + (view.x + c.x / W * view.w) / d, y: r.top + (view.y + view.h - c.y / H * view.h) / d };
+}
+function kFromVelocity(vx, vy) {
+  const sp = Math.hypot(vx, vy);
+  if (sp < 1e-3) return [0, 0];
+  const vmax = DT * params.steps * 60;            // lattice group velocity sin k = 1, in cells per second
+  const k = Math.min(1.25, Math.asin(Math.min(0.95, params.kick * sp / vmax)));
+  return [k * vx / sp, k * vy / sp];
+}
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* synthetic or already-released pointer */ }
+  const p = toCells(e);
+  let mode = params.brush;
+  if ((e.button === 2 || e.shiftKey) && mode !== 'grating' && mode !== 'lattice') mode = 'wall';
+  if (e.altKey) mode = 'erase';
+  if (maze.on) {
+    const src = mazeGeom().src;
+    if (Math.hypot(p.x - src.x, p.y - src.y) < cssToCells(26)) { queue.push(fire); return; }
+    const i = partAt(p, cssToCells(16));
+    if (i < 0) { closeKnob(); return; }
+    if (maze.flying) { toast('The parts are locked while the packet is flying.'); return; }
+    // a part that both turns and slides slides when grabbed at its ring, and turns when grabbed further out
+    const q = maze.parts[i], c = boardCell(q.at), A = q.adjust;
+    const slide = A.slide && q.track && (!A.angle || Math.hypot(p.x - c.x, p.y - c.y) < cssToCells(16));
+    pointers.set(e.pointerId, { ...p, t: e.timeStamp, vx: 0, vy: 0, moved: 0, mode: 'part', part: i, drag: slide ? 'slide' : A.angle ? 'turn' : null,
+                                grab: q.angle - Math.atan2(p.y - c.y, p.x - c.x) * 180 / Math.PI });
+    hint.classList.add('dim');
+    return;
+  }
+  const side = p.x < W / 2 ? 0 : 1;
+  if (game.on && (mode === 'wave' || mode === 'front')) { mode = 'paddle'; game.target[side] = p.y / H; }
+  pointers.set(e.pointerId, { ...p, t: e.timeStamp, vx: 0, vy: 0, acc: 0, moved: 0, mode, side, phase: Math.random() * Math.PI * 2, first: true });
+  if (mode === 'front' || mode === 'grating' || mode === 'lattice') aim = { ax: p.x, ay: p.y, bx: p.x, by: p.y, id: e.pointerId, line: mode === 'grating', rect: mode === 'lattice' };
+  else if (mode === 'wall' || mode === 'erase') queue.push(() => paint(p, p, mode === 'erase'));
+  else if (mode === 'charge') queue.push(() => addCharge(p, params.charge));
+  hint.classList.add('dim');
+});
+canvas.addEventListener('pointermove', e => {
+  const s = pointers.get(e.pointerId);
+  if (!s) return;
+  const p = toCells(e), dt = Math.max(4, e.timeStamp - s.t) / 1000;
+  const dx = p.x - s.x, dy = p.y - s.y, a = 1 - Math.exp(-dt / 0.06);
+  s.vx += (dx / dt - s.vx) * a; s.vy += (dy / dt - s.vy) * a;
+  const from = { x: s.x, y: s.y };
+  s.x = p.x; s.y = p.y; s.t = e.timeStamp;
+  const d = Math.hypot(dx, dy);
+  s.moved += d;
+  if (s.mode === 'wave') {
+    s.acc += d;
+    const sig = params.sigma * scale();
+    if (s.acc >= Math.max(2, 0.7 * sig)) {
+      s.acc = 0;
+      const [kx, ky] = kFromVelocity(s.vx, s.vy), first = s.first;
+      s.first = false;
+      queue.push(() => splat({ x: p.x, y: p.y, sx: sig, kx, ky, phase: first ? s.phase : 0, align: !first }));
+    }
+  } else if (s.mode === 'front' || s.mode === 'grating' || s.mode === 'lattice') {
+    if (aim?.id === e.pointerId) { aim.bx = p.x; aim.by = p.y; }
+  } else if (s.mode === 'part') {
+    const q = maze.parts[s.part], c = boardCell(q.at);
+    if (!maze.flying && s.drag === 'turn') {
+      const a = ((5 * Math.round((Math.atan2(p.y - c.y, p.x - c.x) * 180 / Math.PI + s.grab) / 5)) % 180 + 180) % 180;   // 5° steps
+      if (a !== q.angle) { q.angle = a; partsChanged(`${a}°`); }
+    } else if (!maze.flying && s.drag === 'slide' && s.moved > cssToCells(3)) {
+      const at = slideTo(q, p);
+      if (at[0] !== q.at[0] || at[1] !== q.at[1]) { q.at = at; partsChanged(); }
+    }
+  } else if (s.mode === 'paddle') {
+    game.target[s.side] = p.y / H;
+  } else if (s.mode !== 'charge') {
+    queue.push(() => paint(from, p, s.mode === 'erase'));
+  }
+});
+function endPointer(e) {
+  const s = pointers.get(e.pointerId);
+  if (!s) return;
+  pointers.delete(e.pointerId);
+  if (s.mode === 'part') { if (e.type === 'pointerup' && s.moved < cssToCells(5)) openKnob(s.part); return; }
+  if (s.mode === 'paddle') game.target[s.side] = null;
+  if (s.mode === 'grating' && aim?.id === e.pointerId) {
+    const a = { x: aim.ax, y: aim.ay }, b = { x: aim.bx, y: aim.by };
+    aim = null;
+    if (e.type === 'pointerup') queue.push(() => paintGrating(a, b));
+  }
+  if (s.mode === 'lattice' && aim?.id === e.pointerId) {
+    const a = { x: aim.ax, y: aim.ay }, b = { x: aim.bx, y: aim.by };
+    aim = null;
+    if (e.type === 'pointerup') queue.push(() => paintLattice(a, b));
+  }
+  if (s.mode === 'front' && aim?.id === e.pointerId) {
+    const dx = aim.bx - aim.ax, dy = aim.by - aim.ay, len = Math.hypot(dx, dy), { ax, ay } = aim;
+    aim = null;
+    if (e.type !== 'pointerup' || len < 4) return;
+    // launch from the press point towards the release point; a quarter screen of drag gives k = 1
+    const dir = [dx / len, dy / len], k = Math.min(1.25, params.kick * len / (0.25 * Math.min(W, H)));
+    queue.push(() => splat({ x: ax, y: ay, sx: params.sigma * scale(), sy: frontSigma(), dir, kx: k * dir[0], ky: k * dir[1], phase: s.phase }));
+  }
+  if (s.mode === 'wave' && s.moved < 3) {
+    const sig = params.sigma * scale();
+    queue.push(() => splat({ x: s.x, y: s.y, sx: sig, phase: s.phase }));
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+// ---------- UI ----------
+const hint = document.getElementById('hint');
+const touch = matchMedia('(pointer: coarse)').matches;
+function setHint() {
+  hint.textContent = maze.on
+    ? (touch ? 'Set the parts marked in gold · tap the gold arrow to fire' : 'Set the parts marked in gold · click the gold arrow or press Space to fire · R resets the level')
+    : game.on
+    ? (touch ? 'Drag on either half to move that paddle · choose Wall in the panel to add obstacles'
+             : 'W / S and ↑ / ↓ move the paddles, or drag on either half · shift-drag adds obstacles · R restarts')
+    : (touch ? 'Drag to launch wave packets · tap for a packet at rest · choose Wall in the panel to draw barriers'
+             : 'Drag to launch wave packets · click for a packet at rest · shift- or right-drag draws walls · alt-drag erases');
+}
+const scoreEl = document.getElementById('score');
+function showScore() { scoreEl.textContent = game.score.map(v => v.toFixed(2)).join('  ·  '); }
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+const controls = {};
+function setParam(k, v) { params[k] = v; controls[k]?.sync(); }
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+function slider(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl');
+  row.innerHTML = `<label for="${id}"><span>${o.label}</span><output id="${id}-o"></output></label><input type="range" id="${id}" min="${o.min}" max="${o.max}" step="${o.step}">`;
+  const inp = row.querySelector('input'), out = row.querySelector('output');
+  const sync = () => {
+    inp.value = params[o.k]; out.textContent = o.fmt(params[o.k]);
+    inp.style.setProperty('--fill', ((params[o.k] - o.min) / (o.max - o.min) * 100) + '%');
+  };
+  inp.addEventListener('input', () => { params[o.k] = parseFloat(inp.value); sync(); o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function select(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl');
+  row.innerHTML = `<label for="${id}"><span>${o.label}</span></label><select id="${id}">${o.options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`;
+  const s = row.querySelector('select');
+  const sync = () => { s.value = String(params[o.k]); };
+  s.addEventListener('change', () => { params[o.k] = o.num ? +s.value : s.value; o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function toggle(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl inline');
+  row.innerHTML = `<label for="${id}">${o.label}</label><span class="switch"><input type="checkbox" id="${id}"><span></span></span>`;
+  const c = row.querySelector('input');
+  const sync = () => { c.checked = params[o.k]; };
+  c.addEventListener('change', () => { params[o.k] = c.checked; o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function segmented(o) {
+  const row = el('div', 'ctl'), seg = el('div', 'seg');
+  seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', o.label);
+  const btns = o.options.map(([v, t]) => {
+    const b = el('button', '', t); b.type = 'button'; b.id = 'c-' + o.k + '-' + v;
+    b.addEventListener('click', () => { setParam(o.k, v); o.change?.(); });
+    seg.appendChild(b); return [v, b];
+  });
+  const sync = () => btns.forEach(([v, b]) => b.setAttribute('aria-pressed', String(params[o.k] === v)));
+  row.appendChild(el('label', '', `<span>${o.label}</span>`)); row.appendChild(seg);
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function buttons(items) {
+  const row = el('div', 'btns');
+  for (const [label, fn, key, id] of items) {
+    const b = el('button', 'btn', `<span>${label}</span>${key ? `<kbd>${key}</kbd>` : ''}`);
+    b.type = 'button'; b.id = id; b.addEventListener('click', fn); row.appendChild(b);
+  }
+  return row;
+}
+
+const f2 = v => v.toFixed(2), f1 = v => v.toFixed(1);
+const actions = [
+  ['Random', () => { for (let i = 0; i < 5; i++) queue.push(() => splat(randomPacket())); }, 'Space', 'a-random'],
+  ['Measure', () => queue.push(measure), 'M', 'a-measure'],
+  ['Clear ψ', () => queue.push(clearWave), 'C', 'a-clear'],
+  ['Pause', () => setParam('paused', !params.paused), 'P', 'a-pause'],
+  ['Reverse time', () => queue.push(reverseTime), 'T', 'a-reverse'],
+  ['Quantize picture…', () => pictureInput.click(), '', 'a-picture'],
+];
+document.getElementById('actions').replaceWith(buttons(actions));
+
+const BRUSH_NOTES = {
+  wave: 'Drag to paint packets that travel with your stroke. Click for a packet at rest.',
+  front: 'Drag in the direction of travel and let go to launch a long, plane-wave-like front. A longer drag gives more momentum.',
+  wall: 'Drag to draw a barrier of height V₀. A negative V₀ draws an attractive well instead.',
+  grating: 'Drag a straight line to place a grating: bars of height V₀ with clear slits between them. A negative V₀ gives a grating of wells.',
+  lattice: 'Drag a rectangle to fill it with a square or Kagome lattice of sites of height V₀, sized by Wall thickness. A negative V₀ gives a lattice of wells; the Kagome preset uses V₀ = −0.15, spacing 14, thickness 8.',
+  charge: 'Click to place a charge, V = −Z/r (softened over one cell). Positive Z attracts, negative Z repels. Clear walls removes it.',
+  erase: 'Drag to remove barriers.',
+};
+const brushNote = el('p', 'note', BRUSH_NOTES[params.brush]);
+const gratingRows = [
+  slider({ k: 'gratP', label: 'Grating period', min: 4, max: 80, step: 1, fmt: v => Math.round(v * scale()) + ' Δx' }),
+  slider({ k: 'slit', label: 'Slit width', min: 1, max: 40, step: 0.5, fmt: v => Math.round(v * scale()) + ' Δx' }),
+];
+const latticeRows = [
+  segmented({ k: 'latShape', label: 'Lattice', options: [['square', 'Square'], ['kagome', 'Kagome']] }),
+  slider({ k: 'latA', label: 'Site spacing', min: 6, max: 60, step: 0.5, fmt: v => Math.round(v * scale()) + ' Δx' }),
+  slider({ k: 'latAngle', label: 'Lattice angle', min: 0, max: 90, step: 1, fmt: v => v + '°' }),
+];
+const chargeRow = slider({ k: 'charge', label: 'Charge Z', min: -10, max: 10, step: 0.5, fmt: v => (v > 0 ? '+' : '') + v + (v > 0 ? ' attracts' : v < 0 ? ' repels' : '') });
+latticeRows[0].querySelector('.seg').style.gridTemplateColumns = 'repeat(2, 1fr)';
+const showGrating = () => {
+  chargeRow.hidden = params.brush !== 'charge';
+  gratingRows.forEach(r => { r.hidden = params.brush !== 'grating'; });
+  latticeRows.forEach(r => { r.hidden = params.brush !== 'lattice'; });
+};
+showGrating();
+
+const ballNoteEl = el('p', 'note');
+function ballNote() {
+  const n = sharpCrossings();
+  ballNoteEl.innerHTML = `The ball stays within √2·σ for about <em>${n < 0.1 ? n.toFixed(2) : n.toFixed(1)}</em> crossings of the table. ` +
+    'A narrow ball spreads <em>faster</em>: sharp crossings ≈ σ²·v / distance. Changes apply from the next serve.';
+}
+const groups = [
+  ['Scene', [
+    select({ k: 'preset', label: 'Preset', options: Object.entries(PRESETS).map(([k, p]) => [k, p.label]), change: () => { document.activeElement?.blur(); queue.push(loadPreset); } }),
+    el('p', 'note', '<span id="presetNote"></span>'),
+    select({ k: 'boundary', label: 'Edges', options: [['absorb', 'Absorbing'], ['reflect', 'Hard walls'], ['wrap', 'Periodic (torus)'], ['goals', 'Absorbing left and right']] }),
+    buttons([['Reset scene', () => queue.push(loadPreset), 'R', 'a-reset'], ['Clear walls', () => queue.push(clearWalls), '', 'a-walls'],
+             ['Hydrogen in 3D →', () => { location.href = 'hydrogen-3d.html'; }, '', 'a-h3d']]),
+  ]],
+  ['Maze', [
+    select({ k: 'level', label: 'Level', num: true, options: [], change: () => { document.activeElement?.blur(); queue.push(loadPreset); } }),
+    el('p', 'note', '<span id="levelNote"></span>'),
+    buttons([
+      ['Fire', () => queue.push(fire), 'Space', 'a-fire'],
+      ['Next level', () => { if (levelFile.length) { setParam('level', (params.level + 1) % levelFile.length); queue.push(loadPreset); } }, '', 'a-next'],
+      ['Open levels…', () => levelInput.click(), '', 'a-open'],
+      ['Level editor', () => { location.href = 'level-editor.html'; }, '', 'a-editor'],
+    ]),
+  ]],
+  ['Game', [
+    toggle({ k: 'cpu', label: 'Computer plays the right paddle' }),
+    slider({ k: 'ballW', label: 'Ball width σ', min: 4, max: 60, step: 1, fmt: v => Math.round(v * scale()) + ' Δx', change: ballNote }),
+    slider({ k: 'ballK', label: 'Ball momentum k', min: 0.4, max: 1.6, step: 0.05, fmt: f2, change: ballNote }),
+    toggle({ k: 'focus', label: 'Focused serve', change: ballNote }),
+    ballNoteEl,
+  ]],
+  ['Brush', [
+    segmented({ k: 'brush', label: 'Draw', options: [['wave', 'Packet'], ['front', 'Front'], ['wall', 'Wall'], ['grating', 'Grating'], ['lattice', 'Lattice'], ['charge', 'Charge'], ['erase', 'Erase']], change: () => { brushNote.textContent = BRUSH_NOTES[params.brush]; showGrating(); } }),
+    brushNote,
+    ...gratingRows,
+    ...latticeRows,
+    chargeRow,
+    slider({ k: 'sigma', label: 'Packet width σ', min: 4, max: 40, step: 1, fmt: v => Math.round(v * scale()) + ' Δx', change: null }),
+    slider({ k: 'frontLen', label: 'Wavefront length', min: 0.2, max: 2, step: 0.05, fmt: v => Math.round(v * Math.min(W, H)) + ' Δx' }),
+    slider({ k: 'amp', label: 'Amplitude', min: 0.1, max: 2, step: 0.05, fmt: f2 }),
+    slider({ k: 'kick', label: 'Momentum per drag speed', min: 0.2, max: 3, step: 0.05, fmt: v => v.toFixed(2) + '×' }),
+    slider({ k: 'wallH', label: 'Wall height V₀', min: -VMAX, max: VMAX, step: 0.05, fmt: f2 }),
+    slider({ k: 'brushW', label: 'Wall thickness', min: 1, max: 20, step: 0.5, fmt: v => (v * scale() * 2).toFixed(0) + ' Δx' }),
+  ]],
+  ['Simulation', [
+    slider({ k: 'steps', label: 'Speed', min: 1, max: 60, step: 1, fmt: v => v + ' steps/frame' }),
+    slider({ k: 'B', label: 'Magnetic field B', min: -0.06, max: 0.06, step: 0.001, fmt: v => v === 0 ? 'off' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(3) + ' · ℓ = ' + Math.round(1 / Math.sqrt(Math.abs(v))) + ' Δx' }),
+    select({ k: 'res', label: 'Grid (short side)', num: true, options: [256, 384, 512, 768, 1024].map(v => [v, v + ' cells']), change: () => queue.push(() => { const [w, h] = simDims(); state.free(); pot.free(); state = null; allocSim(w, h); loadPreset(); }) }),
+    slider({ k: 'fade', label: 'Decay', min: 0, max: 1, step: 0.01, fmt: v => v === 0 ? 'off' : f2(v) }),
+    toggle({ k: 'paused', label: 'Paused' }),
+  ]],
+  ['Display', [
+    slider({ k: 'exposure', label: 'Exposure', min: 0.3, max: 6, step: 0.05, fmt: f2, change: drawWheel }),
+    slider({ k: 'sat', label: 'Saturation', min: 0, max: 1.6, step: 0.05, fmt: f2, change: drawWheel }),
+    toggle({ k: 'showPot', label: 'Show potential' }),
+    toggle({ k: 'bloom', label: 'Bloom' }),
+    slider({ k: 'bloomI', label: 'Bloom intensity', min: 0, max: 2, step: 0.05, fmt: f2 }),
+    slider({ k: 'bloomT', label: 'Bloom threshold', min: 0, max: 1, step: 0.01, fmt: f2 }),
+  ]],
+];
+const groupsEl = document.getElementById('groups');
+groupsEl.style.display = 'contents';
+const sections = {};
+for (const [title, items] of groups) {
+  const g = el('section', 'group'); g.appendChild(el('h2', '', title));
+  items.forEach(i => g.appendChild(i)); groupsEl.appendChild(g);
+  sections[title] = g;
+}
+sections.Game.hidden = true;
+sections.Maze.hidden = true;
+
+// Level files: maze-levels.js beside the page, or any level file the player opens (.js or .json)
+function setLevelOptions() {
+  const s = document.getElementById('c-level');
+  s.replaceChildren(...levelFile.map((l, i) => new Option(`${i + 1}. ${l.name || 'Untitled'}`, i)));
+  s.value = String(params.level);
+}
+setLevelOptions();
+const pictureInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', hidden: true });
+document.body.appendChild(pictureInput);
+pictureInput.addEventListener('change', () => { loadPicture(pictureInput.files[0]); pictureInput.value = ''; });
+window.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); });
+window.addEventListener('drop', e => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault();   // a dropped file would otherwise replace the page
+  const f = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
+  if (f) loadPicture(f); else toast('Drop a picture to quantize it.');
+});
+const levelInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.js,.json', hidden: true });
+document.body.appendChild(levelInput);
+levelInput.addEventListener('change', () => {
+  const f = levelInput.files[0];
+  levelInput.value = '';
+  if (!f) return;
+  f.text().then(t => {
+    levelFile = readLevelFile(t);
+    params.level = 0; setLevelOptions(); setParam('preset', 'maze'); queue.push(loadPreset);
+    toast(`Loaded ${levelFile.length} level${levelFile.length === 1 ? '' : 's'} from ${f.name}`);
+  }).catch(() => toast(`${f.name} is not a maze level file.`));
+});
+
+const panel = document.getElementById('panel'), panelToggle = document.getElementById('panelToggle');
+function setCollapsed(c) { panel.classList.toggle('collapsed', c); panelToggle.setAttribute('aria-expanded', String(!c)); }
+panelToggle.addEventListener('click', () => setCollapsed(!panel.classList.contains('collapsed')));
+if (window.innerWidth < 640) setCollapsed(true);
+
+// Colour key: angle = phase, radius = amplitude (0 … 2)
+function drawWheel() {
+  const c = document.getElementById('wheel'), ctx = c.getContext('2d'), n = c.width, img = ctx.createImageData(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (x + 0.5) / n * 2 - 1, dy = 1 - (y + 0.5) / n * 2, r = Math.hypot(dx, dy), i = (y * n + x) * 4;
+    if (r > 1) { img.data[i + 3] = 0; continue; }
+    const th = Math.atan2(dy, dx);
+    let rgb = [0, 2.0943951, 4.1887902].map(o => 0.5 + 0.5 * Math.cos(th - o));
+    const l = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+    const b = 1 - Math.exp(-params.exposure * r * 2);
+    rgb = rgb.map(v => Math.min(1, Math.max(0, l + (v - l) * params.sat)) * b);
+    img.data[i] = rgb[0] * 255; img.data[i + 1] = rgb[1] * 255; img.data[i + 2] = rgb[2] * 255;
+    img.data[i + 3] = 255 * Math.min(1, (1 - r) * n * 0.5);
+  }
+  ctx.putImageData(img, 0, 0);
+}
+drawWheel();
+
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); if (maze.on) queue.push(fire); else actions[0][1](); }
+  else if (k === 'm') actions[1][1]();
+  else if (k === 'c') actions[2][1]();
+  else if (k === 'p') actions[3][1]();
+  else if (k === 't') actions[4][1]();
+  else if (k === 'r') queue.push(loadPreset);
+  else if (k === 'h') setCollapsed(!panel.classList.contains('collapsed'));
+});
+
+// ---------- main loop ----------
+const clock = document.getElementById('clock');
+resizeCanvas(); initBloom();
+allocSim(...simDims());
+loadPreset();
+post({ maze: 'ready', defaults: PART_DEFAULTS, knobs: KNOBS, typeKnobs: TYPE_KNOBS, source: SOURCE_DEFAULTS, board: MAZE_BOARD });
+let last = performance.now();
+
+function frame(now) {
+  const dtf = Math.min(0.1, (now - last) / 1000); last = now;
+  if (resizeCanvas()) {
+    initBloom();
+    const [w, h] = simDims();
+    if (w !== W || h !== H) { allocSim(w, h); if (maze.on) maze.dirty = true; }
+  }
+  while (queue.length) queue.shift()();
+  if (game.on) movePaddles();
+  for (let rep = maze.fast && maze.flying ? 3 : 1; rep > 0; rep--) {   // the editor's tests run three sim frames per screen frame
+    if (!params.paused) stepSim();
+    if (game.on && !params.paused && ++game.frame % 3 === 0) scoreGame();
+    if (maze.on && maze.flying && !params.paused && ++maze.frame % 3 === 0) scoreMaze();
+  }
+  if (maze.dirty) { maze.dirty = false; buildMaze(); }
+  if (mark.life > 0) mark.life = Math.max(0, mark.life - dtf / 1.2);
+  fitView();
+  render();
+  drawOverlay(); postView();
+  clock.textContent = (Math.round(clockT) || 0).toLocaleString('en-US');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

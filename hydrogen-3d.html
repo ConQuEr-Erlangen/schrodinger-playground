@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Hydrogen 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Same instrument as the Schrödinger Playground: full-bleed WebGL view, one translucent panel top-right, readout line bottom-left. Single dark look by choice. */
+:root {
+  --void: #04050a;
+  --panel: rgba(11, 13, 20, 0.84);
+  --line: rgba(196, 206, 236, 0.13);
+  --ink: #e7eaf3;
+  --muted: #8d95aa;
+  --accent: #a9c2ff;
+  --track: rgba(196, 206, 236, 0.18);
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; background: var(--void); color: var(--ink);
+  font: 13px/1.4 var(--font-body);
+  -webkit-user-select: none; user-select: none;
+}
+[hidden] { display: none !important; }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#gl:active { cursor: grabbing; }
+#ov { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; mix-blend-mode: screen; }
+
+.panel {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: 280px; max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; width: 100%;
+}
+.panel-head h1 { margin: 0; font: 400 22px/1 var(--font-display); letter-spacing: 0.005em; flex: 1; }
+.panel-head h1 i { font-style: italic; color: var(--accent); }
+.panel-head .chev { color: var(--muted); font-size: 11px; transition: transform 0.2s; }
+.panel.collapsed .chev { transform: rotate(-90deg); }
+.panel.collapsed .panel-body { display: none; }
+.panel-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 14px; }
+.panel-body::-webkit-scrollbar { width: 6px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+
+.legend { display: grid; grid-template-columns: 76px 1fr; gap: 12px; align-items: center; padding-top: 2px; }
+.legend canvas { width: 76px; height: 76px; display: block; }
+.legend dl { margin: 0; display: grid; gap: 6px; font-size: 12px; }
+.legend dt { font: 500 10px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.legend dd { margin: 2px 0 0; }
+.readout { font: 11px/1.5 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.readout b { color: var(--ink); font-weight: 500; }
+
+.group { display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--line); padding-top: 12px; }
+.group h2 { margin: 0; font: 500 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.ctl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; }
+.ctl output { font: 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctl.inline { flex-direction: row; align-items: center; justify-content: space-between; }
+.state { display: flex; flex-direction: column; gap: 6px; }
+.state + .state { padding-top: 9px; border-top: 1px dashed var(--line); }
+.qrow { display: grid; grid-template-columns: 1fr 1fr 1.7fr; gap: 6px; }
+
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: none; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 3px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--track) var(--fill, 50%)); border-radius: 2px; }
+input[type=range]::-moz-range-track { height: 3px; background: var(--track); border-radius: 2px; }
+input[type=range]::-moz-range-progress { height: 3px; background: var(--accent); border-radius: 2px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px; border-radius: 50%; background: var(--ink); border: 0; }
+input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: var(--ink); border: 0; }
+
+select {
+  width: 100%; font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+}
+select option { background: #151821; }
+.seg { display: grid; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 6px 0; cursor: pointer; box-shadow: 0 0 0 0.5px var(--line); }
+.seg button[aria-pressed=true] { color: var(--void); background: var(--accent); font-weight: 500; }
+
+.switch { position: relative; width: 30px; height: 17px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 9px; background: var(--track); transition: background 0.15s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--ink); transition: transform 0.15s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(13px); background: var(--void); }
+
+.back { align-self: flex-start; font: 12px var(--font-mono); color: var(--accent); text-decoration: none; }
+.back:hover { text-decoration: underline; text-underline-offset: 2px; }
+.credits { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.credits a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--track); text-underline-offset: 2px; }
+
+button:focus-visible, select:focus-visible, input:focus-visible + span, input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.hint {
+  position: fixed;
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  margin: 0; font: 12px/1.6 var(--font-mono); color: var(--muted); pointer-events: none; text-shadow: 0 1px 6px #000;
+}
+.hint b { color: var(--ink); font-weight: 500; }
+.hint .name { font: 400 26px/1.1 var(--font-display); color: var(--ink); display: block; }
+.hint sub { font-size: 0.7em; }
+.fail { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+</style>
+
+<canvas id="gl"></canvas>
+<canvas id="ov" aria-hidden="true"></canvas>
+
+<aside class="panel" id="panel">
+  <button class="panel-head" id="panelToggle" aria-expanded="true" aria-controls="panelBody">
+    <h1><i>ψ</i> Hydrogen 3D</h1><span class="chev" aria-hidden="true">▼</span>
+  </button>
+  <div class="panel-body" id="panelBody">
+    <a class="back" id="back" href="schrodinger-playground.html">← Schrödinger Playground</a>
+    <div class="legend">
+      <canvas id="wheel" width="152" height="152" aria-label="Colour key: hue is the phase of psi"></canvas>
+      <dl>
+        <div><dt>Hue</dt><dd>phase arg ψ</dd></div>
+        <div><dt>Density</dt><dd>|ψ|²</dd></div>
+        <div class="readout">t = <b id="clock">0</b> a.u.<br>ħ = mₑ = e = a₀ = 1</div>
+      </dl>
+    </div>
+    <div id="groups" style="display: contents"></div>
+    <p class="credits">Created by <a href="https://www.conquerlangen.de/team" target="_blank" rel="noopener">Daniel Burgarth</a> using Claude and the Schrödinger equation. A companion to the Schrödinger Playground.</p>
+  </div>
+</aside>
+
+<p class="hint" id="hint"></p>
+
+<script>
+'use strict';
+(() => {
+const $ = id => document.getElementById(id);
+const canvas = $('gl'), ov = $('ov'), octx = ov.getContext('2d');
+function fail(msg) {
+  document.body.insertAdjacentHTML('beforeend', `<div class="fail"><p>${msg}</p></div>`);
+}
+// Back to the playground: beside this file, the page this one is bundled with, or else its published copy
+(async () => {
+  if (location.protocol === 'file:') return;
+  for (const c of ['schrodinger-playground.html', 'index.html', './']) {
+    try {
+      const r = await fetch(c);
+      if (r.ok && new DOMParser().parseFromString(await r.text(), 'text/html').title === 'Schrödinger Playground') { $('back').href = c; return; }
+    } catch (_) { /* try the next */ }
+  }
+  Object.assign($('back'), { href: 'https://claude.ai/artifact/5fx4diUq8odVLLb9rJRyp4', target: '_blank', rel: 'noopener' });
+})();
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, preserveDrawingBuffer: false });
+if (!gl) { fail('This page needs WebGL 2.'); return; }
+if (!gl.getExtension('EXT_color_buffer_float')) { fail('This GPU cannot render to floating-point textures, which this page needs.'); return; }
+
+// ---------- physics (atomic units: ħ = mₑ = e = a₀ = 1) ----------
+const HARTREE_EV = 27.211386, AU_FS = 0.02418884, HC_EV_NM = 1239.842;
+const MAX_STATES = 4;
+const small = Math.min(innerWidth, innerHeight) < 600;
+const VN = small ? 96 : 128;   // resolution of the orbital volumes
+
+// ---------- shaders ----------
+const VS = `#version 300 es
+layout(location = 0) in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const HEAD = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler3D;
+out vec4 o;
+`;
+// Hydrogen eigenfunctions ψnlm = N·ρ^l e^(−ρ/2) L(n−l−1, 2l+1; ρ) P(l, |m|; cos θ) e^(imφ), ρ = 2r/n
+const ORBITAL = `
+uniform ivec3 uQ[${MAX_STATES}];     // n, l, m
+uniform float uNorm[${MAX_STATES}];
+uniform int uReal;       // 1: real orbitals, cos(|m|φ) for m > 0 and sin(|m|φ) for m < 0
+float laguerre(int k, float a, float x) {
+  if (k == 0) return 1.0;
+  float L0 = 1.0, L1 = 1.0 + a - x;
+  for (int i = 1; i < k; i++) {
+    float L2 = ((2.0 * float(i) + 1.0 + a - x) * L1 - (float(i) + a) * L0) / float(i + 1);
+    L0 = L1; L1 = L2;
+  }
+  return L1;
+}
+float legendre(int l, int m, float x) {
+  float s = sqrt(max(0.0, 1.0 - x * x)), pmm = 1.0, f = 1.0;
+  for (int i = 1; i <= m; i++) { pmm *= f * s; f += 2.0; }
+  if (l == m) return pmm;
+  float p1 = x * float(2 * m + 1) * pmm;
+  if (l == m + 1) return p1;
+  float pl = 0.0;
+  for (int ll = m + 2; ll <= l; ll++) {
+    pl = (x * float(2 * ll - 1) * p1 - float(ll + m - 1) * pmm) / float(ll - m);
+    pmm = p1; p1 = pl;
+  }
+  return pl;
+}
+vec2 orbital(int s, vec3 p) {
+  int n = uQ[s].x, l = uQ[s].y, m = uQ[s].z, am = abs(m);
+  float r = length(p), rho = 2.0 * r / float(n), rl = 1.0;
+  for (int i = 0; i < l; i++) rl *= rho;
+  float A = uNorm[s] * rl * exp(-0.5 * rho) * laguerre(n - l - 1, float(2 * l + 1), rho)
+          * legendre(l, am, r > 1e-6 ? p.z / r : 1.0);
+  if (m == 0) return vec2(A, 0.0);
+  float ph = (p.x == 0.0 && p.y == 0.0) ? 0.0 : float(am) * atan(p.y, p.x);
+  if (uReal == 1) return vec2(A * (m > 0 ? cos(ph) : sin(ph)), 0.0);
+  return A * vec2(cos(ph), m > 0 ? sin(ph) : -sin(ph));
+}`;
+// One layer of a display volume holding two orbitals, each scaled to peak 1 so half floats keep their precision
+const VOLGEN_FS = HEAD + ORBITAL + `
+uniform int uLayer, uVN, uCount;
+uniform ivec2 uPick;
+uniform float uL;
+void main() {
+  vec3 p = (vec3(gl_FragCoord.xy, float(uLayer) + 0.5) / float(uVN) * 2.0 - 1.0) * uL;
+  o = vec4(uPick.x < uCount ? orbital(uPick.x, p) : vec2(0.0), uPick.y < uCount ? orbital(uPick.y, p) : vec2(0.0));
+}`;
+// Ray marching through the volumes: an emitting, absorbing cloud, or the surface |ψ|² = level
+const RAY_FS = HEAD + `
+uniform sampler3D uVol0, uVol1;   // orbitals 1, 2 and 3, 4
+uniform vec4 uCoef0, uCoef1;      // their complex weights e^(−iEt)·c
+uniform int uBoth;
+uniform float uL, uTexel, uBright, uIso, uIso2, uAlpha;
+uniform int uTwo;       // a second surface at |ψ|² = uIso2
+uniform vec3 uEye, uRight, uUp, uFwd;
+uniform vec2 uTan, uRes;
+uniform int uLook, uCut;
+const vec3 BG = vec3(0.016, 0.02, 0.04);
+vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+vec2 psi(vec3 p) {
+  vec3 uvw = p / (2.0 * uL) + 0.5;
+  vec4 a = texture(uVol0, uvw);
+  vec2 z = cmul(uCoef0.xy, a.xy) + cmul(uCoef0.zw, a.zw);
+  if (uBoth == 1) { vec4 b = texture(uVol1, uvw); z += cmul(uCoef1.xy, b.xy) + cmul(uCoef1.zw, b.zw); }
+  return z;
+}
+float dens(vec3 p) { vec2 z = psi(p); return dot(z, z); }
+vec3 hue(vec2 z) { return 0.5 + 0.5 * cos(atan(z.y, z.x) - vec3(0.0, 2.0943951, 4.1887902)); }
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 ndc = gl_FragCoord.xy / uRes * 2.0 - 1.0;
+  vec3 rd = normalize(uFwd + ndc.x * uTan.x * uRight + ndc.y * uTan.y * uUp);
+  vec3 inv = 1.0 / rd, a = (vec3(-uL) - uEye) * inv, b = (vec3(uL) - uEye) * inv;
+  vec3 lo = min(a, b), hi = max(a, b);
+  float tn = max(max(lo.x, lo.y), max(lo.z, 0.0)), tf = min(hi.x, min(hi.y, hi.z));
+  bool cut = false;
+  if (uCut == 1) { float tp = -dot(uEye, uFwd) / dot(rd, uFwd); if (tp > tn) { tn = tp; cut = true; } }
+  vec3 col = BG;
+  if (tf > tn) {
+    if (uLook == 0) {
+      float ds = 2.0 * uL / 220.0, t = tn + ds * hash(gl_FragCoord.xy), T = 1.0;
+      vec3 acc = vec3(0.0);
+      for (int i = 0; i < 420; i++) {
+        if (t > tf || T < 0.01) break;
+        vec2 z = psi(uEye + rd * t);
+        float rho = dot(z, z) * uBright, al = 1.0 - exp(-rho * 40.0 * ds / uL);
+        acc += T * al * hue(z) * min(1.0, 0.3 + rho);
+        T *= 1.0 - al; t += ds;
+      }
+      col = acc + T * BG;
+    } else {
+      // Transparent surfaces: every crossing of a level, entering or leaving, adds a layer, front to back
+      float ds = 2.0 * uL / 320.0, t = tn, T = 1.0;
+      vec3 acc = vec3(0.0), ld = normalize(-rd + 0.6 * uUp + 0.35 * uRight);
+      float lv[2] = float[2](uIso, uIso2);
+      int nl = uTwo == 1 ? 2 : 1;
+      float prev = dens(uEye + rd * t);
+      if (cut) for (int k = 0; k < nl; k++) if (prev > lv[k]) {   // the cut face, where the plane slices through a lobe
+        vec3 p = uEye + rd * t;
+        float dif = max(dot(-uFwd, ld), 0.0);
+        acc += T * uAlpha * hue(psi(p)) * (0.16 + 0.84 * dif);
+        T *= 1.0 - uAlpha;
+      }
+      for (int i = 0; i < 700; i++) {
+        t += ds;
+        if (t > tf || T < 0.02) break;
+        float d = dens(uEye + rd * t);
+        for (int k = 0; k < nl; k++) {
+          if ((prev - lv[k]) * (d - lv[k]) >= 0.0) continue;
+          float t0 = t - ds, t1 = t;
+          bool rising = d > prev;
+          for (int j = 0; j < 6; j++) { float tm = 0.5 * (t0 + t1); if ((dens(uEye + rd * tm) > lv[k]) == rising) t1 = tm; else t0 = tm; }
+          vec3 p = uEye + rd * t1, e = vec3(uTexel, 0.0, 0.0);
+          vec3 g = vec3(dens(p + e.xyy) - dens(p - e.xyy), dens(p + e.yxy) - dens(p - e.yxy), dens(p + e.yyx) - dens(p - e.yyx));
+          vec3 nrm = -normalize(g + 1e-12);
+          if (dot(nrm, rd) > 0.0) nrm = -nrm;
+          float dif = max(dot(nrm, ld), 0.0), spec = pow(max(dot(reflect(-ld, nrm), -rd), 0.0), 28.0);
+          // the outer (lower) surface is fainter, and both thicken where seen edge-on, like a soap bubble
+          float al = uAlpha * (nl == 2 && lv[k] < lv[1 - k] ? 0.6 : 1.0);
+          al = min(1.0, al * mix(0.65, 1.6, pow(1.0 - abs(dot(nrm, rd)), 2.0)));
+          acc += T * al * (hue(psi(p)) * (0.16 + 0.84 * dif) + 0.22 * spec);
+          T *= 1.0 - al;
+        }
+        prev = d;
+      }
+      col = acc + T * BG;
+    }
+  }
+  o = vec4(col, 1.0);
+}`;
+
+// ---------- WebGL plumbing ----------
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const vs = compile(gl.VERTEX_SHADER, VS);
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const locs = {};
+  return { use() { gl.useProgram(p); return this; }, u(n) { return n in locs ? locs[n] : (locs[n] = gl.getUniformLocation(p, n)); } };
+}
+let prog;
+try { prog = { volgen: program(VOLGEN_FS), ray: program(RAY_FS) }; }
+catch (e) { fail('Could not compile the shaders: ' + e.message); return; }
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function tex3D(n) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_3D, t);
+  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, n, n, n, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_3D, k, v);
+  return { tex: t, n };
+}
+const vols = [tex3D(VN), tex3D(VN)];
+const layerFbo = gl.createFramebuffer();
+function bind(unit, tex, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_3D, tex); gl.uniform1i(loc, unit); }
+function drawLayers(vol, pr) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, layerFbo);
+  gl.viewport(0, 0, vol.n, vol.n);
+  for (let z = 0; z < vol.n; z++) {
+    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, vol.tex, 0, z);
+    gl.uniform1i(pr.u('uLayer'), z);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+}
+
+// ---------- hydrogen orbitals on the CPU (normalisation, peaks, names) ----------
+const fact = k => { let f = 1; for (let i = 2; i <= k; i++) f *= i; return f; };
+function normOf(q, real) {
+  const { n, l, m } = q, am = Math.abs(m);
+  const radial = Math.sqrt(Math.pow(2 / n, 3) * fact(n - l - 1) / (2 * n * fact(n + l)));
+  return radial * Math.sqrt((2 * l + 1) / (4 * Math.PI) * fact(l - am) / fact(l + am)) * (real && m !== 0 ? Math.SQRT2 : 1);
+}
+function laguerre(k, a, x) {
+  if (k === 0) return 1;
+  let L0 = 1, L1 = 1 + a - x;
+  for (let i = 1; i < k; i++) { const L2 = ((2 * i + 1 + a - x) * L1 - (i + a) * L0) / (i + 1); L0 = L1; L1 = L2; }
+  return L1;
+}
+function legendre(l, m, x) {
+  const s = Math.sqrt(Math.max(0, 1 - x * x));
+  let pmm = 1, f = 1;
+  for (let i = 1; i <= m; i++) { pmm *= f * s; f += 2; }
+  if (l === m) return pmm;
+  let p1 = x * (2 * m + 1) * pmm;
+  if (l === m + 1) return p1;
+  let pl = 0;
+  for (let ll = m + 2; ll <= l; ll++) { pl = (x * (2 * ll - 1) * p1 - (ll + m - 1) * pmm) / (ll - m); pmm = p1; p1 = pl; }
+  return pl;
+}
+function orbitalAbs(q, real, x, y, z) {   // |ψnlm|
+  const { n, l, m } = q, am = Math.abs(m), r = Math.hypot(x, y, z), rho = 2 * r / n;
+  const A = normOf(q, real) * Math.pow(rho, l) * Math.exp(-rho / 2) * laguerre(n - l - 1, 2 * l + 1, rho) * legendre(l, am, r > 1e-9 ? z / r : 1);
+  if (m === 0 || !real) return Math.abs(A);
+  const ph = am * Math.atan2(y, x);
+  return Math.abs(A * (m > 0 ? Math.cos(ph) : Math.sin(ph)));
+}
+function extentOf(q) {   // 1.2 × the radius where the radial probability r²R² falls to 1% of its peak
+  const P = r => { const rho = 2 * r / q.n; return (r * Math.pow(rho, q.l) * Math.exp(-rho / 2) * laguerre(q.n - q.l - 1, 2 * q.l + 1, rho)) ** 2; };
+  const end = 4 * q.n * q.n + 20;
+  let pmax = 0, cut = 1;
+  for (let r = 0.02; r < end; r += 0.02) pmax = Math.max(pmax, P(r));
+  for (let r = 0.02; r < end; r += 0.02) if (P(r) > 0.01 * pmax) cut = r;
+  return 1.2 * cut;
+}
+const energy = n => -0.5 / (n * n);
+const LETTERS = 'spdfgh';
+const REAL_NAMES = {
+  '1,1': 'x', '1,-1': 'y', '1,0': 'z',
+  '2,0': 'z²', '2,1': 'xz', '2,-1': 'yz', '2,2': 'x²−y²', '2,-2': 'xy',
+  '3,0': 'z³', '3,1': 'xz²', '3,-1': 'yz²', '3,2': 'z(x²−y²)', '3,-2': 'xyz', '3,3': 'x(x²−3y²)', '3,-3': 'y(3x²−y²)',
+};
+function mLabel(l, m, real) {
+  if (l === 0) return '0';
+  if (real && REAL_NAMES[l + ',' + m]) return REAL_NAMES[l + ',' + m];
+  return (m > 0 ? '+' : m < 0 ? '−' : '') + Math.abs(m) + (real && m !== 0 ? (m > 0 ? ' cos' : ' sin') : '');
+}
+function orbitalName(q, real) {
+  const base = q.n + LETTERS[q.l];
+  if (q.l === 0) return base;
+  if (real && REAL_NAMES[q.l + ',' + q.m]) return `${base}<sub>${REAL_NAMES[q.l + ',' + q.m]}</sub>`;
+  return `${base}<sub>m=${mLabel(q.l, q.m, false)}</sub>`;
+}
+const minus = s => s.replace('-', '−');
+
+// ---------- state ----------
+const params = {
+  count: 1, real: true,
+  n0: 3, l0: 2, m0: 0, w0: 1,
+  n1: 2, l1: 1, m1: 0, w1: 1,
+  n2: 4, l2: 3, m2: 0, w2: 1,
+  n3: 3, l3: 1, m3: 1, w3: 1,
+  play: true, tSpeed: 4,
+  look: 'cloud', bright: 0.4, iso: 0.08, second: true, iso2: 0.35, opacity: 0.6, cut: false, spin: true,
+};
+const controls = {};
+const cam = { yaw: 0.75, pitch: 0.38, zoom: 1 };
+const orb = { L: 1, qs: [], amp: [], peak: [], ref: 1, t: 0, dirty: true };
+
+const stateOf = i => ({ n: params['n' + i], l: params['l' + i], m: params['m' + i] });
+function amplitudes() {   // c_i = √(w_i / Σw), so the weights are the probabilities of each state
+  const w = Array.from({ length: params.count }, (_, i) => params.count > 1 ? params['w' + i] : 1);
+  const sum = w.reduce((a, b) => a + b, 0) || 1;
+  return w.map(v => Math.sqrt(v / sum));
+}
+
+function buildOrbitals() {
+  const qs = Array.from({ length: params.count }, (_, i) => stateOf(i)), real = params.real;
+  const L = Math.max(...qs.map(extentOf));
+  // |ψ_i| on a 41³ sample of the box: each state's peak, and later the brightest the mix can get
+  const G = 20, samples = qs.map(() => new Float32Array((2 * G + 1) ** 3)), peak = qs.map(() => 0);
+  let idx = 0;
+  for (let k = -G; k <= G; k++) for (let j = -G; j <= G; j++) for (let i = -G; i <= G; i++, idx++) {
+    qs.forEach((q, s) => { const a = orbitalAbs(q, real, i / G * L, j / G * L, k / G * L); samples[s][idx] = a; if (a > peak[s]) peak[s] = a; });
+  }
+  const pr = prog.volgen.use(), all = [...qs];
+  while (all.length < MAX_STATES) all.push(qs[0]);   // unused slots repeat a valid state
+  gl.uniform3iv(pr.u('uQ'), new Int32Array(all.flatMap(q => [q.n, q.l, q.m])));
+  gl.uniform1fv(pr.u('uNorm'), new Float32Array(all.map((q, s) => normOf(q, real) / (peak[s] || peak[0] || 1))));
+  gl.uniform1i(pr.u('uReal'), real ? 1 : 0);
+  gl.uniform1i(pr.u('uVN'), VN);
+  gl.uniform1i(pr.u('uCount'), qs.length);
+  gl.uniform1f(pr.u('uL'), L);
+  for (let v = 0; v < (qs.length > 2 ? 2 : 1); v++) {
+    gl.uniform2i(pr.u('uPick'), 2 * v, 2 * v + 1);
+    drawLayers(vols[v], pr);
+  }
+  Object.assign(orb, { L, qs, peak, samples, dirty: false });
+  reweigh();
+}
+function reweigh() {   // amplitudes, and Σ c_i|ψ_i| at its largest: |ψ| never exceeds it at any time
+  const amp = amplitudes();
+  let ref = 0;
+  for (let idx = 0; idx < orb.samples[0].length; idx++) {
+    let sum = 0;
+    for (let s = 0; s < amp.length; s++) sum += amp[s] * orb.samples[s][idx];
+    if (sum > ref) ref = sum;
+  }
+  Object.assign(orb, { amp, ref: ref || 1 });
+}
+function coefficients() {   // complex weights of the four volume channels at time t, scaled so max |ψ|² ≤ 1
+  const c = [];
+  orb.qs.forEach((q, s) => {
+    const ph = -energy(q.n) * orb.t, a = orb.amp[s] * orb.peak[s] / orb.ref;
+    c.push(a * Math.cos(ph), a * Math.sin(ph));
+  });
+  while (c.length < 8) c.push(0);
+  return c;
+}
+
+// ---------- camera and drawing ----------
+function cameraFor(L) {
+  const d = 3.2 * L * cam.zoom, cp = Math.cos(cam.pitch);
+  const eye = [d * cp * Math.cos(cam.yaw), d * cp * Math.sin(cam.yaw), d * Math.sin(cam.pitch)];
+  const fwd = eye.map(v => -v / d);
+  let right = [fwd[1], -fwd[0], 0];   // fwd × z
+  const rl = Math.hypot(...right); right = right.map(v => v / rl);
+  const up = [right[1] * fwd[2] - right[2] * fwd[1], right[2] * fwd[0] - right[0] * fwd[2], right[0] * fwd[1] - right[1] * fwd[0]];
+  const aspect = canvas.width / canvas.height, t = Math.tan(20 * Math.PI / 180);
+  const tan = aspect >= 1 ? [t * aspect, t] : [t, t / aspect];
+  return { eye, fwd, right, up, tan };
+}
+function render() {
+  const L = orb.L, c = cameraFor(L), pr = prog.ray.use(), k = coefficients();
+  bind(0, vols[0].tex, pr.u('uVol0'));
+  bind(1, vols[1].tex, pr.u('uVol1'));
+  gl.uniform4f(pr.u('uCoef0'), k[0], k[1], k[2], k[3]);
+  gl.uniform4f(pr.u('uCoef1'), k[4], k[5], k[6], k[7]);
+  gl.uniform1i(pr.u('uBoth'), orb.qs.length > 2 ? 1 : 0);
+  gl.uniform1f(pr.u('uL'), L);
+  gl.uniform1f(pr.u('uTexel'), 2 * L / VN);
+  gl.uniform1f(pr.u('uBright'), Math.pow(10, params.bright));
+  gl.uniform1f(pr.u('uIso'), params.iso);
+  gl.uniform1f(pr.u('uIso2'), params.iso2);
+  gl.uniform1i(pr.u('uTwo'), params.second ? 1 : 0);
+  gl.uniform1f(pr.u('uAlpha'), params.opacity);
+  gl.uniform3f(pr.u('uEye'), ...c.eye); gl.uniform3f(pr.u('uRight'), ...c.right); gl.uniform3f(pr.u('uUp'), ...c.up); gl.uniform3f(pr.u('uFwd'), ...c.fwd);
+  gl.uniform2f(pr.u('uTan'), ...c.tan);
+  gl.uniform2f(pr.u('uRes'), canvas.width, canvas.height);
+  gl.uniform1i(pr.u('uLook'), params.look === 'cloud' ? 0 : 1);
+  gl.uniform1i(pr.u('uCut'), params.cut ? 1 : 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  drawOverlay(c, L);
+}
+function drawOverlay(c, L) {
+  const w = ov.width, h = ov.height, k = window.devicePixelRatio || 1;
+  octx.clearRect(0, 0, w, h);
+  const proj = p => {
+    const d = [p[0] - c.eye[0], p[1] - c.eye[1], p[2] - c.eye[2]];
+    const z = d[0] * c.fwd[0] + d[1] * c.fwd[1] + d[2] * c.fwd[2];
+    const x = (d[0] * c.right[0] + d[1] * c.right[1] + d[2] * c.right[2]) / (z * c.tan[0]);
+    const y = (d[0] * c.up[0] + d[1] * c.up[1] + d[2] * c.up[2]) / (z * c.tan[1]);
+    return [(x + 1) / 2 * w, (1 - y) / 2 * h];
+  };
+  octx.lineWidth = k;
+  octx.strokeStyle = 'rgba(196, 206, 236, 0.13)';
+  octx.beginPath();
+  for (let a = 0; a < 3; a++) for (const s of [-1, 1]) for (const t of [-1, 1]) {
+    const p = [0, 0, 0], q = [0, 0, 0], b = (a + 1) % 3, e = (a + 2) % 3;
+    p[a] = -L; q[a] = L; p[b] = q[b] = s * L; p[e] = q[e] = t * L;
+    octx.moveTo(...proj(p)); octx.lineTo(...proj(q));
+  }
+  octx.stroke();
+  // axes from the nucleus, z up: the quantisation axis
+  const o = proj([0, 0, 0]);
+  octx.font = `${11 * k}px "IBM Plex Mono", monospace`;
+  octx.textAlign = 'center'; octx.textBaseline = 'middle';
+  ['x', 'y', 'z'].forEach((name, a) => {
+    const e = [0, 0, 0]; e[a] = 0.28 * L;
+    const l = [0, 0, 0]; l[a] = 0.34 * L;
+    octx.strokeStyle = 'rgba(196, 206, 236, 0.35)';
+    octx.beginPath(); octx.moveTo(...o); octx.lineTo(...proj(e)); octx.stroke();
+    octx.fillStyle = 'rgba(196, 206, 236, 0.6)';
+    octx.fillText(name, ...proj(l));
+  });
+  octx.fillStyle = '#fff';
+  octx.beginPath(); octx.arc(o[0], o[1], 2.2 * k, 0, 2 * Math.PI); octx.fill();
+}
+
+// ---------- panel ----------
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+function setParam(k, v) { params[k] = v; controls[k]?.sync(); }
+function slider(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl');
+  row.innerHTML = `<label for="${id}"><span>${o.label}</span><output></output></label><input type="range" id="${id}" min="${o.min}" max="${o.max}" step="${o.step}">`;
+  const inp = row.querySelector('input'), out = row.querySelector('output');
+  const sync = () => {
+    inp.value = params[o.k]; out.textContent = o.fmt(params[o.k]);
+    inp.style.setProperty('--fill', ((params[o.k] - o.min) / (o.max - o.min) * 100) + '%');
+  };
+  inp.addEventListener('input', () => { params[o.k] = parseFloat(inp.value); sync(); o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function select(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl');
+  row.innerHTML = `<label for="${id}"><span>${o.label}</span></label><select id="${id}"></select>`;
+  const s = row.querySelector('select');
+  const sync = () => {
+    s.innerHTML = o.options().map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+    s.value = String(params[o.k]);
+  };
+  s.addEventListener('change', () => { params[o.k] = o.num ? +s.value : s.value; o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function toggle(o) {
+  const id = 'c-' + o.k, row = el('div', 'ctl inline');
+  row.innerHTML = `<label for="${id}">${o.label}</label><span class="switch"><input type="checkbox" id="${id}"><span></span></span>`;
+  const c = row.querySelector('input');
+  const sync = () => { c.checked = params[o.k]; };
+  c.addEventListener('change', () => { params[o.k] = c.checked; o.change?.(); });
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function segmented(o) {
+  const row = el('div', 'ctl'), seg = el('div', 'seg');
+  seg.style.gridTemplateColumns = `repeat(${o.options.length}, 1fr)`;
+  seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', o.label);
+  const btns = o.options.map(([v, t]) => {
+    const b = el('button', '', t); b.type = 'button'; b.id = 'c-' + o.k + '-' + v;
+    b.addEventListener('click', () => { setParam(o.k, v); o.change?.(); });
+    seg.appendChild(b); return [v, b];
+  });
+  const sync = () => btns.forEach(([v, b]) => b.setAttribute('aria-pressed', String(params[o.k] === v)));
+  row.appendChild(el('label', '', `<span>${o.label}</span>`));
+  row.appendChild(seg);
+  controls[o.k] = { sync }; sync();
+  return row;
+}
+function group(title, items) {
+  const g = el('section', 'group');
+  g.appendChild(el('h2', '', title));
+  items.forEach(i => g.appendChild(i));
+  return g;
+}
+
+// one state: n, l, m kept consistent (l < n, |m| ≤ l), plus its weight when several are superposed
+function stateBlock(i) {
+  const box = el('div', 'state'), row = el('div', 'qrow'), nk = 'n' + i, lk = 'l' + i, mk = 'm' + i;
+  const fix = () => {
+    params[lk] = Math.min(params[lk], params[nk] - 1);
+    params[mk] = Math.max(-params[lk], Math.min(params[lk], params[mk]));
+    controls[lk].sync(); controls[mk].sync();
+    orb.dirty = true;
+  };
+  row.appendChild(select({ k: nk, label: 'n', num: true, options: () => [1, 2, 3, 4, 5, 6].map(n => [n, n]), change: fix }));
+  row.appendChild(select({ k: lk, label: 'l', num: true, options: () => Array.from({ length: params[nk] }, (_, l) => [l, `${l} ${LETTERS[l]}`]), change: fix }));
+  row.appendChild(select({ k: mk, label: 'm', num: true, options: () => {
+    const l = params[lk], out = [];
+    for (let m = -l; m <= l; m++) out.push([m, mLabel(l, m, params.real)]);
+    return out;
+  }, change: fix }));
+  box.appendChild(row);
+  const weight = slider({ k: 'w' + i, label: 'Weight', min: 0, max: 1, step: 0.05, fmt: () => '', change: () => { if (!orb.dirty) reweigh(); syncWeights(); } });   // a pending rebuild reweighs anyway
+  box.appendChild(weight);
+  return { box, weight };
+}
+const blocks = Array.from({ length: MAX_STATES }, (_, i) => stateBlock(i));
+function syncWeights() {   // each weight slider shows that state's probability |c_i|²
+  const amp = amplitudes();
+  blocks.forEach((b, i) => {
+    b.box.hidden = i >= params.count;
+    b.weight.hidden = params.count < 2;
+    b.weight.querySelector('output').textContent = i < params.count ? Math.round(amp[i] ** 2 * 100) + '%' : '';
+  });
+}
+const groupsEl = $('groups');
+groupsEl.appendChild(group('State', [
+  segmented({ k: 'count', label: 'Superpose', options: [[1, '1'], [2, '2'], [3, '3'], [4, '4']], change: () => { syncWeights(); orb.dirty = true; } }),
+  ...blocks.map(b => b.box),
+  toggle({ k: 'real', label: 'Real orbitals (chemistry)', change: () => { for (let i = 0; i < MAX_STATES; i++) controls['m' + i].sync(); orb.dirty = true; } }),
+]));
+groupsEl.appendChild(group('Time', [
+  toggle({ k: 'play', label: 'Run time' }),
+  slider({ k: 'tSpeed', label: 'Speed', min: 0.5, max: 40, step: 0.5, fmt: v => v + ' a.u./s' }),
+]));
+const isoRow = slider({ k: 'iso', label: 'Surface at |ψ|² =', min: 0.005, max: 0.6, step: 0.005, fmt: v => (v * 100).toFixed(1) + '% of peak' });
+const brightRow = slider({ k: 'bright', label: 'Brightness', min: -1, max: 2, step: 0.05, fmt: v => '×' + Math.pow(10, v).toFixed(Math.pow(10, v) < 10 ? 1 : 0) });
+const secondRow = toggle({ k: 'second', label: 'Second surface', change: () => showLook() });
+const iso2Row = slider({ k: 'iso2', label: 'Second surface at |ψ|² =', min: 0.005, max: 0.9, step: 0.005, fmt: v => (v * 100).toFixed(1) + '% of peak' });
+const opacityRow = slider({ k: 'opacity', label: 'Opacity', min: 0.15, max: 1, step: 0.05, fmt: v => Math.round(v * 100) + '%' });
+const showLook = () => {
+  const surf = params.look === 'surface';
+  isoRow.hidden = secondRow.hidden = opacityRow.hidden = !surf;
+  iso2Row.hidden = !surf || !params.second;
+  brightRow.hidden = surf;
+};
+groupsEl.appendChild(group('View', [
+  segmented({ k: 'look', label: 'Look', options: [['cloud', 'Cloud'], ['surface', 'Surface']], change: showLook }),
+  brightRow, isoRow, secondRow, iso2Row, opacityRow,
+  toggle({ k: 'cut', label: 'Cut open' }),
+  toggle({ k: 'spin', label: 'Turn slowly' }),
+]));
+syncWeights(); showLook();
+
+const panel = $('panel'), panelToggle = $('panelToggle');
+function setCollapsed(c) { panel.classList.toggle('collapsed', c); panelToggle.setAttribute('aria-expanded', String(!c)); }
+panelToggle.addEventListener('click', () => setCollapsed(!panel.classList.contains('collapsed')));
+if (window.innerWidth < 640) setCollapsed(true);
+
+(function drawWheel() {
+  const c = $('wheel'), ctx = c.getContext('2d'), n = c.width, img = ctx.createImageData(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (x + 0.5) / n * 2 - 1, dy = 1 - (y + 0.5) / n * 2, r = Math.hypot(dx, dy), i = (y * n + x) * 4;
+    if (r > 1) continue;
+    const th = Math.atan2(dy, dx), b = 1 - Math.exp(-4 * r);
+    [0, 2.0943951, 4.1887902].forEach((o, j) => { img.data[i + j] = 255 * b * (0.5 + 0.5 * Math.cos(th - o)); });
+    img.data[i + 3] = 255 * Math.min(1, (1 - r) * n * 0.5);
+  }
+  ctx.putImageData(img, 0, 0);
+})();
+
+// ---------- pointer: drag turns, wheel and pinch zoom ----------
+const pointers = new Map();
+let dragging = false;
+canvas.addEventListener('pointerdown', e => {
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  dragging = true;
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  if (pointers.size === 1) {
+    cam.yaw -= (e.clientX - p.x) * 0.008;
+    cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch + (e.clientY - p.y) * 0.008));
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()], other = a === p ? b : a;
+    const before = Math.hypot(p.x - other.x, p.y - other.y), after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+    if (before > 0 && after > 0) cam.zoom = Math.max(0.3, Math.min(3, cam.zoom * before / after));
+  }
+  p.x = e.clientX; p.y = e.clientY;
+});
+const endPointer = e => { pointers.delete(e.pointerId); dragging = pointers.size > 0; };
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = Math.max(0.3, Math.min(3, cam.zoom * Math.exp(e.deltaY * 0.0012))); }, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); setParam('play', !params.play); }
+  else if (k === 'h') setCollapsed(!panel.classList.contains('collapsed'));
+});
+
+// ---------- readouts ----------
+const hint = $('hint'), clock = $('clock');
+const fsOf = t => (t * AU_FS).toFixed(t * AU_FS < 10 ? 2 : 1);
+function updateHint() {
+  const qs = orb.qs, ns = [...new Set(qs.map(q => q.n))].sort((a, b) => a - b);
+  let line = ns.map(n => `E<sub>${n}</sub> = <b>${minus((energy(n) * HARTREE_EV).toFixed(2))} eV</b>`).join(' · ');
+  // each pair of different energies beats at ω = ΔE and would emit light of that frequency
+  const beats = [];
+  for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) {
+    const dE = energy(ns[j]) - energy(ns[i]);
+    beats.push(`${ns[j]}→${ns[i]}: <b>${fsOf(2 * Math.PI / dE)} fs</b>, ${(HC_EV_NM / (dE * HARTREE_EV)).toFixed(1)} nm`);
+  }
+  if (beats.length) line += '<br>beats ' + beats.join(' · ');
+  hint.innerHTML = `<span class="name">${qs.map(q => orbitalName(q, params.real)).join(' + ')}</span>${line}<br>t = <b>${fsOf(orb.t)} fs</b> · box ±${orb.L.toFixed(0)} a₀`;
+}
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = window.devicePixelRatio || 1, cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const budget = small ? 0.5e6 : 1.1e6, s = Math.min(dpr, Math.sqrt(budget / (cw * ch)));
+  const w = Math.max(1, Math.round(cw * s)), h = Math.max(1, Math.round(ch * s));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ow = Math.round(cw * dpr), oh = Math.round(ch * dpr);
+  if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
+}
+let last = performance.now();
+function frame(now) {
+  const dtf = Math.min(0.1, (now - last) / 1000); last = now;
+  resize();
+  if (params.spin && !dragging) cam.yaw += 0.12 * dtf;
+  if (orb.dirty) buildOrbitals();
+  if (params.play) orb.t += params.tSpeed * dtf;
+  render();
+  clock.textContent = orb.t.toFixed(1);
+  updateHint();
+  requestAnimationFrame(frame);
+}
+buildOrbitals();
+requestAnimationFrame(frame);
+})();
+</script>
