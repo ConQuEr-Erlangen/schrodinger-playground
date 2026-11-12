@@ -20,3 +20,7 @@ Everything is static: open `index.html` in a browser, or serve the folder with a
 Lattice units ħ = m = Δx = 1, with a fourth-order Laplacian. Without a magnetic field the Schrödinger equation is integrated with Visscher's staggered leapfrog. With a field B ≠ 0 a second-order differencing scheme takes over, with the field entering as Peierls phases in the symmetric gauge.
 
 Created by Daniel Burgarth using Claude.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
